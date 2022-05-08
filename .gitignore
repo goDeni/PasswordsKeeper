@@ -1,3 +1,6 @@
-dist/*
+dist
 *.lock
 *.pyc
+.pytest_cache
+.venv
+__pycache__

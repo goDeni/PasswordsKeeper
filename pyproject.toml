@@ -4,6 +4,10 @@ version = "0.1.0"
 description = "Passwords keeper telegram bot"
 authors = ["goDeni <den4ikept11@gmail.com>"]
 
+packages = [
+    { include = "sec_store", from = "src" },
+]
+
 [tool.poetry.dependencies]
 python = "^3.10"
 

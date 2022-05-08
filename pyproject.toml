@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "passwords-keeper"
+version = "0.1.0"
+description = "Passwords keeper telegram bot"
+authors = ["goDeni <den4ikept11@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+
+[tool.poetry.dev-dependencies]
+black = "^22.3.0"
+pytest = "^7.1.2"
+isort = "^5.10.1"
+autoflake8 = "^0.3.2"
+mypy = "^0.950"
+pylint = "^2.13.8"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

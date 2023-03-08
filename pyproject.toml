@@ -6,18 +6,23 @@ authors = ["goDeni <den4ikept11@gmail.com>"]
 
 packages = [
     { include = "sec_store", from = "src" },
+    { include = "bot", from = "src" },
 ]
 
 [tool.poetry.dependencies]
 python = "^3.10"
+pycryptodome = "3.16.0"
+aiogram = "2.24"
+python-dotenv = "0.21.1"
 
 [tool.poetry.dev-dependencies]
-black = "^22.3.0"
-pytest = "^7.1.2"
-isort = "^5.10.1"
-autoflake8 = "^0.3.2"
-mypy = "^0.950"
-pylint = "^2.13.8"
+black = "22.12.0"
+pytest = "7.2.1"
+isort = "5.11.4"
+autoflake8 = "0.4.0"
+mypy = "0.991"
+pylint = "2.15.10"
+autoflake = "2.0.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

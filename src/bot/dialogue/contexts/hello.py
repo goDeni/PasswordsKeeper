@@ -1,12 +1,7 @@
 from asyncio import create_task
 
 from aiogram import Bot
-from aiogram.types import (
-    CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    Message,
-)
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.dialogue.contexts.base import BaseContext, CallbackName
 from bot.dialogue.contexts.inititlize_rep import InitializeRepCtx
@@ -20,9 +15,6 @@ class HelloCtx(BaseContext):
     def __init__(self, bot: Bot, user_id: int) -> None:
         super().__init__(bot, user_id)
         create_task(self._send_hello_message(), name=f"Send hello message {user_id=}")
-
-    async def _handle_sub_ctx_result(self, sub_ctx: None):
-        raise NotImplementedError
 
     async def _send_hello_message(self):
         if not user_has_repository(self._user_id):
@@ -44,6 +36,3 @@ class HelloCtx(BaseContext):
     async def _open_repository_callback(self, callback_query: CallbackQuery):
         self._set_new_ctx(OpenRepositoryCtx)
         await callback_query.message.delete()
-
-    async def _handle_message(self, message: Message):
-        await message.delete()

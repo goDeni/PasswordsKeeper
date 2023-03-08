@@ -1,4 +1,3 @@
-from abc import abstractmethod
 from functools import partial
 from logging import getLogger
 from typing import (
@@ -49,9 +48,8 @@ class _CallbackHandling:
 
 
 class _MessageHandling:
-    @abstractmethod
     async def _handle_message(self, message: Message):
-        raise NotImplementedError
+        await message.delete()
 
 
 class _CtxIsOver:
@@ -83,10 +81,6 @@ class BaseSubContext(
 
         self._sub_ctx_over = False
         self._result: _SubCtxResultType | _Default = _Default
-
-    @abstractmethod
-    async def _handle_message(self, message: Message):
-        raise NotImplementedError
 
     def _set_result(self, result: _SubCtxResultType):
         self._result = result
@@ -128,9 +122,14 @@ class BaseContext(_CallbackHandling, _MessageHandling, _CtxIsOver):
         )
         await self.__remove_sub_ctx_if_needed()
 
-    @abstractmethod
-    async def _handle_sub_ctx_result(self, sub_ctx: _SubCtxResultType):
-        raise NotImplementedError
+    async def _handle_sub_ctx_result(
+        self, sub_ctx: _SubCtxResultType
+    ):  # pylint: disable=unused-argument
+        logger.warning(
+            "Called not overridden method %s type=%s",
+            "_handle_sub_ctx_result",
+            type(self),
+        )
 
     def _set_sub_ctx(self, sub_ctx: BaseSubContext):
         self.__sub_ctx = sub_ctx

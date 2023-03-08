@@ -20,9 +20,6 @@ class OpenRepositoryCtx(BaseContext):
             name=f"Send enter password message {user_id=}",
         )
 
-    async def _handle_sub_ctx_result(self, sub_ctx: None):
-        raise NotImplementedError
-
     async def _send_enter_password_message(self):
         self._enter_password_message = await self._bot.send_message(
             self._user_id, "Введите пароль"

@@ -2,12 +2,7 @@ from asyncio import create_task
 from enum import Enum, unique
 from typing import Tuple
 
-from aiogram.types import (
-    CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    Message,
-)
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.dialogue.contexts.base import BaseSubContext, CallbackName
 from sec_store.record import Record, RecordId
@@ -67,6 +62,3 @@ class ViewRecord(BaseSubContext[Tuple[RecordAction, RecordId] | None]):
     async def _edit_callback(self, callback_query: CallbackQuery):
         self._set_result((RecordAction.EDIT, self._record.id))
         await callback_query.message.delete()
-
-    async def _handle_message(self, message: Message):
-        await message.delete()

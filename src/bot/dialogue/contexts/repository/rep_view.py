@@ -33,9 +33,6 @@ class RepositoryViewCtx(BaseContext):
             name=f"Send records views message {self._user_id=}",
         )
 
-    async def _handle_message(self, message: Message):
-        await message.delete()
-
     async def _handle_sub_ctx_result(
         self, sub_ctx: AddRecord | ViewRecord | EditRecord
     ):

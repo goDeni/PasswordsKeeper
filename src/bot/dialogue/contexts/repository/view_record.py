@@ -38,7 +38,7 @@ class ViewRecord(BaseSubContext[Tuple[RecordAction, RecordId] | None]):
             InlineKeyboardMarkup()
             .row(InlineKeyboardButton("✏️", callback_data=_EDIT_CALLBACK))
             .row(InlineKeyboardButton("❌", callback_data=_DELETE_CALLBACK))
-            .row(InlineKeyboardButton("Закрыть", callback_data=_CLOSE_VIEW_CALLBACK))
+            .row(InlineKeyboardButton("⬅️ Закрыть", callback_data=_CLOSE_VIEW_CALLBACK))
         )
 
         self._set_callback(_CLOSE_VIEW_CALLBACK, self._close_view_callback)

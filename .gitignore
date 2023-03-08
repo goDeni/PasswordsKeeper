@@ -1,6 +1,8 @@
 dist
-*.lock
 *.pyc
 .pytest_cache
 .venv
 __pycache__
+.vscode
+.env
+.passwords_keeper_bot_data

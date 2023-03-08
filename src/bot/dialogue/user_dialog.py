@@ -1,4 +1,4 @@
-from asyncio import Event
+from asyncio import Event, Lock
 from asyncio import TimeoutError as AsyncTimeoutError
 from asyncio import create_task, wait_for
 from logging import getLogger
@@ -8,7 +8,6 @@ from aiogram import Bot
 from aiogram.types import CallbackQuery, Message
 
 from bot.dialogue.contexts.base import BaseContext
-from bot.user_lock import lock_user_ctx
 
 logger = getLogger(__name__)
 
@@ -22,6 +21,7 @@ class UserDialog:
     ) -> None:
         self._bot = bot
 
+        self._lock = Lock()
         self._user_id = user_id
         self._default_ctx_class = default_ctx_class
         self._check_ctx_change = Event()
@@ -32,12 +32,12 @@ class UserDialog:
         create_task(self._watch_ctx_changing(), name=f"Watch ctx changing {user_id=}")
 
     async def handle_message(self, message: Message):
-        async with lock_user_ctx(self._user_id):
+        async with self._lock:
             await self._ctx.handle_message(message)
             self._check_ctx_change.set()
 
     async def handle_callback(self, callback: str, query: CallbackQuery):
-        async with lock_user_ctx(self._user_id):
+        async with self._lock:
             await self._ctx.handle_callback(callback, query)
             self._check_ctx_change.set()
 

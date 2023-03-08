@@ -1,13 +1,18 @@
+import logging
 from typing import Dict
 
+from aiogram import Bot, Dispatcher, executor
 from aiogram.types import CallbackQuery, Message
 
-from bot.common import get_bot, get_dispatcher
+from bot.config import get_bot_token
 from bot.dialogue.contexts.hello import HelloCtx
 from bot.dialogue.user_dialog import UserDialog
 
-dp = get_dispatcher()
-bot = get_bot()
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
+bot = Bot(token=get_bot_token())
+dp = Dispatcher(bot)
 
 _DIALOGUES: Dict[int, UserDialog] = {}
 
@@ -29,3 +34,11 @@ def _get_user_dialog(user_id: int) -> UserDialog:
         _DIALOGUES[user_id] = UserDialog(bot, HelloCtx, user_id)
 
     return _DIALOGUES[user_id]
+
+
+def main():
+    executor.start_polling(dp, skip_updates=True)
+
+
+if __name__ == "__main__":
+    main()

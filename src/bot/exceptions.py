@@ -1,2 +1,0 @@
-class NoRepositoryExist(Exception):
-    pass

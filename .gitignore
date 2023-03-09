@@ -6,3 +6,4 @@ __pycache__
 .vscode
 .env
 .passwords_keeper_bot_data
+poetry.lock

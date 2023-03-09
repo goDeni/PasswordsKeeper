@@ -1,6 +1,7 @@
-from asyncio import create_task
+from asyncio import create_task, iscoroutine, sleep
 from functools import partial
 from logging import getLogger
+from time import monotonic
 from typing import (
     Callable,
     Coroutine,
@@ -54,14 +55,29 @@ class _MessageHandling:
         await message.delete()
 
 
-class _OnStartup:
+class _OnStartupShutdown:
     def __init__(self) -> None:
-        self._on_startup: List[Coroutine] = []
+        self._on_startup: List[Coroutine | Callable] = []
+        self._on_shutdown: List[Coroutine | Callable] = []
+
         create_task(self.__on_startup(), name=f"_on_startup {type(self)}")
 
     async def __on_startup(self):
-        for startup_coro in self._on_startup:
-            await startup_coro
+        for startup_fn in self._on_startup:
+            if iscoroutine(startup_fn):
+                await startup_fn
+            else:
+                startup_fn()
+
+    async def __on_shutdown(self):
+        for shutdown_fn in self._on_shutdown:
+            if iscoroutine(shutdown_fn):
+                await shutdown_fn
+            else:
+                shutdown_fn()
+
+    async def shutdown(self):
+        await self.__on_shutdown()
 
 
 _CtxResultType = TypeVar("_CtxResultType")  # pylint: disable=invalid-name
@@ -71,22 +87,49 @@ _Exit = object()
 
 
 class BaseContext(
-    Generic[_CtxResultType], _CallbackHandling, _MessageHandling, _OnStartup
+    Generic[_CtxResultType], _CallbackHandling, _MessageHandling, _OnStartupShutdown
 ):
     def __init__(self, bot: Bot, user_id: int) -> None:
         _MessageHandling.__init__(self)
         _CallbackHandling.__init__(self)
-        _OnStartup.__init__(self)
+        _OnStartupShutdown.__init__(self)
 
         self._bot = bot
         self._user_id = user_id
 
+        self.__last_usage = monotonic()
         self.__new_ctx: Callable[[], "BaseContext"] = None
         self.__sub_ctx: BaseContext[_SubCtxResultType] | None = None
         self.__result: _CtxResultType | _Default | _Exit = _Default
 
+        self._on_shutdown.append(self.__shutdown_sub_ctx_if_exist())
+
+    def _kill_ctx_if_unused(self, seconds: int, exit_reason: str):
+        async def _watch_for_time_without_use():
+            while (delta := (self.__last_usage + seconds) - monotonic()) > 0:
+                await sleep(delta)
+
+            if self.ctx_is_over:
+                return
+
+            self._exit_from_ctx()
+            await self._bot.send_message(self._user_id, exit_reason)
+
+        task = create_task(
+            _watch_for_time_without_use(),
+            name=f"_watch_for_time_without_use {self._user_id}",
+        )
+        self._on_shutdown.append(task.cancel)
+
+    async def __shutdown_sub_ctx_if_exist(self):
+        if self.__sub_ctx is None:
+            return
+
+        await self.__sub_ctx.shutdown()
+
     @final
     async def handle_message(self, *args, **kwargs):
+        self.__last_usage = monotonic()
         instance = self if self.__sub_ctx is None else self.__sub_ctx
         await instance._handle_message(  # pylint: disable=protected-access
             *args, **kwargs
@@ -95,6 +138,7 @@ class BaseContext(
 
     @final
     async def handle_callback(self, *args, **kwargs):
+        self.__last_usage = monotonic()
         instance = self if self.__sub_ctx is None else self.__sub_ctx
         await instance._handle_callback(  # pylint: disable=protected-access
             *args, **kwargs
@@ -136,6 +180,7 @@ class BaseContext(
         sub_ctx = self.__sub_ctx
         self.__sub_ctx = None
 
+        await sub_ctx.shutdown()
         await self._handle_sub_ctx_result(sub_ctx)
 
     @final
@@ -148,10 +193,10 @@ class BaseContext(
     @final
     def _set_new_ctx(self, next_ctx_class: Type["BaseContext"], *args, **kwargs):
         if self.ctx_is_over:
-            raise RuntimeError(f"{self.__ctx_is_over=} can't set next ctx")
+            raise RuntimeError("Can't set new ctx: ctx is over")
 
         if self.__new_ctx is not None:
-            raise RuntimeError(f"{self.__new_ctx=} already is not None")
+            raise RuntimeError(f"{self.__new_ctx=} already defined")
 
         self.__new_ctx = partial(
             next_ctx_class, self._bot, self._user_id, *args, **kwargs

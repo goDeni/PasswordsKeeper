@@ -1,7 +1,12 @@
 from enum import Enum, unique
 from typing import Tuple
 
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 
 from bot.dialogue.contexts.base import BaseContext, CallbackName
 from sec_store.record import Record, RecordId
@@ -22,7 +27,14 @@ class ViewRecord(BaseContext[Tuple[RecordAction, RecordId] | None]):
         super().__init__(*args)
 
         self._record = record
+        self._view_rec_message: Message | None = None
+
         self._on_startup.append(self._send_view_record_message())
+        self._on_shutdown.append(self._delete_messages())
+
+    async def _delete_messages(self):
+        if self._view_rec_message is not None:
+            await self._view_rec_message.delete()
 
     async def _send_view_record_message(self):
         keyboard_markup = (
@@ -36,7 +48,7 @@ class ViewRecord(BaseContext[Tuple[RecordAction, RecordId] | None]):
         self._set_callback(_DELETE_CALLBACK, self._delete_callback)
         self._set_callback(_EDIT_CALLBACK, self._edit_callback)
 
-        await self._bot.send_message(
+        self._view_rec_message = await self._bot.send_message(
             self._user_id,
             (
                 f"Название: <code>{self._record.name}</code>\n"
@@ -47,14 +59,17 @@ class ViewRecord(BaseContext[Tuple[RecordAction, RecordId] | None]):
             reply_markup=keyboard_markup,
         )
 
-    async def _close_view_callback(self, callback_query: CallbackQuery):
+    async def _close_view_callback(
+        self, callback_query: CallbackQuery
+    ):  # pylint: disable=unused-argument
         self._exit_from_ctx()
-        await callback_query.message.delete()
 
-    async def _delete_callback(self, callback_query: CallbackQuery):
+    async def _delete_callback(
+        self, callback_query: CallbackQuery
+    ):  # pylint: disable=unused-argument
         self._set_result((RecordAction.DELETE, self._record.id))
-        await callback_query.message.delete()
 
-    async def _edit_callback(self, callback_query: CallbackQuery):
+    async def _edit_callback(
+        self, callback_query: CallbackQuery
+    ):  # pylint: disable=unused-argument
         self._set_result((RecordAction.EDIT, self._record.id))
-        await callback_query.message.delete()

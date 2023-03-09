@@ -42,10 +42,19 @@ class EditRecord(BaseContext[EditResult]):
         self._new_value = record.value
 
         self._changing_field: _Field | None = None
-        self._enter_new_field_value_message: Message | None
+        self._enter_new_field_value_message: Message | None = None
 
         self._edit_rec_message: Message | None = None
+
         self._on_startup.append(self._send_or_update_edit_record_message())
+        self._on_shutdown.append(self._delete_messages())
+
+    async def _delete_messages(self):
+        if self._enter_new_field_value_message is not None:
+            await self._enter_new_field_value_message.delete()
+
+        if self._edit_rec_message is not None:
+            await self._edit_rec_message.delete()
 
     async def _send_or_update_edit_record_message(self):
         keyboard_markup = (
@@ -132,14 +141,16 @@ class EditRecord(BaseContext[EditResult]):
             self._user_id, "Введите новое значение"
         )
 
-    async def _cancel_edit_callback(self, callback_query: CallbackQuery):
+    async def _cancel_edit_callback(
+        self, callback_query: CallbackQuery
+    ):  # pylint: disable=unused-argument
         self._set_result(EditResult.CANCEL)
-        await callback_query.message.delete()
 
-    async def _save_callback(self, callback_query: CallbackQuery):
+    async def _save_callback(
+        self, callback_query: CallbackQuery
+    ):  # pylint: disable=unused-argument
         self._record.name = self._new_name
         self._record.description = self._new_description
         self._record.value = self._new_value
 
         self._set_result(EditResult.SAVE)
-        await callback_query.message.delete()

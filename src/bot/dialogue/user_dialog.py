@@ -26,7 +26,6 @@ class UserDialog:
         self._default_ctx_class = default_ctx_class
         self._check_ctx_change = Event()
 
-        self._ctx_history = []
         self._ctx: BaseContext = default_ctx_class(bot, self._user_id)
 
         create_task(self._watch_ctx_changing(), name=f"Watch ctx changing {user_id=}")
@@ -55,17 +54,21 @@ class UserDialog:
                 )
                 continue
 
-            self._switch_ctx_if_needed()
+            await self._switch_ctx_if_needed()
 
-    def _switch_ctx_if_needed(self):
+    async def _set_new_ctx(self, new_ctx: BaseContext):
+        old_ctx = self._ctx
+        self._ctx = new_ctx
+
+        await old_ctx.shutdown()
+
+    async def _switch_ctx_if_needed(self):
         if self._ctx.ctx_is_over:
-            self._ctx_history.clear()
-            self._ctx = self._default_ctx_class(self._bot, self._user_id)
+            await self._set_new_ctx(self._default_ctx_class(self._bot, self._user_id))
             return
 
         new_ctx = self._ctx.get_new_ctx()
         if new_ctx is None:
             return
 
-        self._ctx_history.append(self._ctx)
-        self._ctx = new_ctx
+        await self._set_new_ctx(new_ctx)

@@ -3,11 +3,11 @@ from typing import List
 
 from aiogram.types import Message
 
-from bot.dialogue.contexts.base import BaseSubContext
+from bot.dialogue.contexts.base import BaseContext
 from sec_store.record import Record
 
 
-class AddRecord(BaseSubContext[Record]):
+class AddRecord(BaseContext[Record]):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 

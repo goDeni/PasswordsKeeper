@@ -3,7 +3,7 @@ from typing import Tuple
 
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
-from bot.dialogue.contexts.base import BaseSubContext, CallbackName
+from bot.dialogue.contexts.base import BaseContext, CallbackName
 from sec_store.record import Record, RecordId
 
 _CLOSE_VIEW_CALLBACK = CallbackName("_CLOSE_VIEW_CALLBACK")
@@ -17,7 +17,7 @@ class RecordAction(Enum):
     DELETE = 2
 
 
-class ViewRecord(BaseSubContext[Tuple[RecordAction, RecordId] | None]):
+class ViewRecord(BaseContext[Tuple[RecordAction, RecordId] | None]):
     def __init__(self, *args, record: Record) -> None:
         super().__init__(*args)
 

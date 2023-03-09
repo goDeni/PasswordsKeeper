@@ -6,7 +6,7 @@ from aiogram.types import (
     Message,
 )
 
-from bot.dialogue.contexts.base import BaseContext, BaseSubContext, CallbackName
+from bot.dialogue.contexts.base import BaseContext, CallbackName
 from bot.user_reps import initialize_user_repository
 from sec_store.key import hash_key
 
@@ -53,7 +53,7 @@ class InitializeRepCtx(BaseContext):
         )
 
 
-class _PasswordInput(BaseSubContext[str | None]):
+class _PasswordInput(BaseContext[str | None]):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 

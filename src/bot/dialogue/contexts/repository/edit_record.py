@@ -8,7 +8,7 @@ from aiogram.types import (
 )
 from aiogram.utils.exceptions import MessageNotModified
 
-from bot.dialogue.contexts.base import BaseSubContext, CallbackName
+from bot.dialogue.contexts.base import BaseContext, CallbackName
 from sec_store.record import Record
 
 _EDIT_NAME = CallbackName("_EDIT_NAME")
@@ -31,7 +31,7 @@ class _Field(Enum):
     VALUE = 2
 
 
-class EditRecord(BaseSubContext[EditResult]):
+class EditRecord(BaseContext[EditResult]):
     def __init__(self, *args, record: Record, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 

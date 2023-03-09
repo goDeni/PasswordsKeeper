@@ -76,16 +76,13 @@ class _OnStartup:
             await startup_coro
 
 
+_CtxResultType = TypeVar("_CtxResultType")  # pylint: disable=invalid-name
 _SubCtxResultType = TypeVar("_SubCtxResultType")  # pylint: disable=invalid-name
 _Default = object()
 
 
-class BaseSubContext(
-    Generic[_SubCtxResultType],
-    _MessageHandling,
-    _CallbackHandling,
-    _CtxIsOver,
-    _OnStartup,
+class BaseContext(
+    Generic[_CtxResultType], _CallbackHandling, _MessageHandling, _CtxIsOver, _OnStartup
 ):
     def __init__(self, bot: Bot, user_id: int) -> None:
         _MessageHandling.__init__(self)
@@ -96,33 +93,9 @@ class BaseSubContext(
         self._bot = bot
         self._user_id = user_id
 
-        self._sub_ctx_over = False
-        self._result: _SubCtxResultType | _Default = _Default
-
-    def _set_result(self, result: _SubCtxResultType):
-        self._result = result
-        self._set_ctx_over()
-
-    @property
-    def result(self) -> _SubCtxResultType:
-        if self._result == _Default:
-            raise RuntimeError("self._result is default!")
-
-        return self._result
-
-
-class BaseContext(_CallbackHandling, _MessageHandling, _CtxIsOver, _OnStartup):
-    def __init__(self, bot: Bot, user_id: int) -> None:
-        _MessageHandling.__init__(self)
-        _CallbackHandling.__init__(self)
-        _CtxIsOver.__init__(self)
-        _OnStartup.__init__(self)
-
-        self._bot = bot
-        self._user_id = user_id
-
         self.__new_ctx: Callable[[], "BaseContext"] = None
-        self.__sub_ctx: BaseSubContext[_SubCtxResultType] | None = None
+        self.__sub_ctx: BaseContext[_SubCtxResultType] | None = None
+        self.__result: _CtxResultType | _Default = _Default
 
     @final
     async def handle_message(self, *args, **kwargs):
@@ -141,16 +114,23 @@ class BaseContext(_CallbackHandling, _MessageHandling, _CtxIsOver, _OnStartup):
         await self.__remove_sub_ctx_if_needed()
 
     async def _handle_sub_ctx_result(
-        self, sub_ctx: _SubCtxResultType
+        self, sub_ctx: "BaseContext[_SubCtxResultType]"
     ):  # pylint: disable=unused-argument
-        logger.warning(
-            "Called not overridden method %s type=%s",
-            "_handle_sub_ctx_result",
-            type(self),
-        )
+        pass
 
-    def _set_sub_ctx(self, sub_ctx: BaseSubContext):
+    def _set_sub_ctx(self, sub_ctx: "BaseContext[_SubCtxResultType]"):
         self.__sub_ctx = sub_ctx
+
+    def _set_result(self, result: _CtxResultType):
+        self.__result = result
+        self._set_ctx_over()
+
+    @property
+    def result(self) -> _CtxResultType:
+        if self.__result == _Default:
+            raise RuntimeError("self._result is default!")
+
+        return self.__result
 
     async def __remove_sub_ctx_if_needed(self):
         if self.__sub_ctx is None:

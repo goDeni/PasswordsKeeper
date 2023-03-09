@@ -14,7 +14,7 @@ _CREATE_REPOSITORY_CALLBACK = CallbackName("_CREATE_REPOSITORY_CALLBACK")
 _CANCEL_PASSWORD_INPUT = CallbackName("_CANCEL_PASSWORD_INPUT")
 
 
-class InitializeRepCtx(BaseContext[None]):
+class InitializeRepCtx(BaseContext):
     def __init__(self, bot: Bot, user_id: int) -> None:
         super().__init__(bot, user_id)
         self._password_input: _PasswordInput | None = None
@@ -26,7 +26,7 @@ class InitializeRepCtx(BaseContext[None]):
             initialize_user_repository(self._user_id, hash_key(sub_ctx.result))
             await self._bot.send_message(self._user_id, "Репозиторий успешно создан!")
 
-        self._set_result(None)
+        self._exit_from_ctx()
 
     async def _handle_message(self, message: Message):
         await message.delete()
@@ -82,7 +82,7 @@ class _PasswordInput(BaseContext[str | None]):
         )
 
     async def _cancel_password_input(self, callback_query: CallbackQuery):
-        self._set_result(None)
+        self._exit_from_ctx()
 
         if self._enter_password_message is not None:
             await self._enter_password_message.delete()

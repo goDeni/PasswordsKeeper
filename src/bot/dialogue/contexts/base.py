@@ -67,6 +67,7 @@ class _OnStartup:
 _CtxResultType = TypeVar("_CtxResultType")  # pylint: disable=invalid-name
 _SubCtxResultType = TypeVar("_SubCtxResultType")  # pylint: disable=invalid-name
 _Default = object()
+_Exit = object()
 
 
 class BaseContext(
@@ -82,7 +83,7 @@ class BaseContext(
 
         self.__new_ctx: Callable[[], "BaseContext"] = None
         self.__sub_ctx: BaseContext[_SubCtxResultType] | None = None
-        self.__result: _CtxResultType | _Default = _Default
+        self.__result: _CtxResultType | _Default | _Exit = _Default
 
     @final
     async def handle_message(self, *args, **kwargs):
@@ -110,6 +111,9 @@ class BaseContext(
 
     def _set_result(self, result: _CtxResultType):
         self.__result = result
+
+    def _exit_from_ctx(self):
+        self.__result = _Exit
 
     @property
     def result(self) -> _CtxResultType:

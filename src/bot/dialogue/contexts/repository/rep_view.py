@@ -96,7 +96,7 @@ class RepositoryViewCtx(BaseContext[None]):
         await callback_query.message.delete()
 
     async def _close_repository_callback(self, callback_query: CallbackQuery):
-        self._set_result(None)
+        self._exit_from_ctx()
         await callback_query.message.delete()
 
     async def _add_record_callback(self, callback_query: CallbackQuery):

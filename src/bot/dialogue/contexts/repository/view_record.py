@@ -48,7 +48,7 @@ class ViewRecord(BaseContext[Tuple[RecordAction, RecordId] | None]):
         )
 
     async def _close_view_callback(self, callback_query: CallbackQuery):
-        self._set_result(None)
+        self._exit_from_ctx()
         await callback_query.message.delete()
 
     async def _delete_callback(self, callback_query: CallbackQuery):

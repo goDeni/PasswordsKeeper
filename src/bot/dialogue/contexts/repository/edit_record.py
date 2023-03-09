@@ -1,4 +1,3 @@
-from asyncio import create_task
 from enum import Enum, unique
 
 from aiogram.types import (
@@ -9,7 +8,7 @@ from aiogram.types import (
 )
 from aiogram.utils.exceptions import MessageNotModified
 
-from bot.dialogue.contexts.base import BaseSubContext, CallbackName
+from bot.dialogue.contexts.base import BaseContext, CallbackName
 from sec_store.record import Record
 
 _EDIT_NAME = CallbackName("_EDIT_NAME")
@@ -32,7 +31,7 @@ class _Field(Enum):
     VALUE = 2
 
 
-class EditRecord(BaseSubContext[EditResult]):
+class EditRecord(BaseContext[EditResult]):
     def __init__(self, *args, record: Record, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
@@ -43,14 +42,19 @@ class EditRecord(BaseSubContext[EditResult]):
         self._new_value = record.value
 
         self._changing_field: _Field | None = None
-        self._enter_new_field_value_message: Message | None
+        self._enter_new_field_value_message: Message | None = None
 
         self._edit_rec_message: Message | None = None
 
-        create_task(
-            self._send_or_update_edit_record_message(),
-            name=f"_send_view_record_message {self._user_id=}",
-        )
+        self._on_startup.append(self._send_or_update_edit_record_message())
+        self._on_shutdown.append(self._delete_messages())
+
+    async def _delete_messages(self):
+        if self._enter_new_field_value_message is not None:
+            await self._enter_new_field_value_message.delete()
+
+        if self._edit_rec_message is not None:
+            await self._edit_rec_message.delete()
 
     async def _send_or_update_edit_record_message(self):
         keyboard_markup = (
@@ -137,14 +141,16 @@ class EditRecord(BaseSubContext[EditResult]):
             self._user_id, "Введите новое значение"
         )
 
-    async def _cancel_edit_callback(self, callback_query: CallbackQuery):
+    async def _cancel_edit_callback(
+        self, callback_query: CallbackQuery
+    ):  # pylint: disable=unused-argument
         self._set_result(EditResult.CANCEL)
-        await callback_query.message.delete()
 
-    async def _save_callback(self, callback_query: CallbackQuery):
+    async def _save_callback(
+        self, callback_query: CallbackQuery
+    ):  # pylint: disable=unused-argument
         self._record.name = self._new_name
         self._record.description = self._new_description
         self._record.value = self._new_value
 
         self._set_result(EditResult.SAVE)
-        await callback_query.message.delete()

@@ -1,5 +1,3 @@
-from asyncio import create_task
-
 from aiogram import Bot
 from aiogram.types import (
     CallbackQuery,
@@ -8,7 +6,7 @@ from aiogram.types import (
     Message,
 )
 
-from bot.dialogue.contexts.base import BaseContext, BaseSubContext, CallbackName
+from bot.dialogue.contexts.base import BaseContext, CallbackName
 from bot.user_reps import initialize_user_repository
 from sec_store.key import hash_key
 
@@ -19,20 +17,16 @@ _CANCEL_PASSWORD_INPUT = CallbackName("_CANCEL_PASSWORD_INPUT")
 class InitializeRepCtx(BaseContext):
     def __init__(self, bot: Bot, user_id: int) -> None:
         super().__init__(bot, user_id)
-
         self._password_input: _PasswordInput | None = None
 
-        create_task(
-            self._send_init_keyboard(),
-            name=f"Send initialize rep keyboard for {user_id=}",
-        )
+        self._on_startup.append(self._send_init_keyboard())
 
     async def _handle_sub_ctx_result(self, sub_ctx: "_PasswordInput"):
         if sub_ctx.result is not None:
             initialize_user_repository(self._user_id, hash_key(sub_ctx.result))
             await self._bot.send_message(self._user_id, "Репозиторий успешно создан!")
 
-        self._set_ctx_over()
+        self._exit_from_ctx()
 
     async def _handle_message(self, message: Message):
         await message.delete()
@@ -59,7 +53,7 @@ class InitializeRepCtx(BaseContext):
         )
 
 
-class _PasswordInput(BaseSubContext[str | None]):
+class _PasswordInput(BaseContext[str | None]):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
@@ -69,9 +63,7 @@ class _PasswordInput(BaseSubContext[str | None]):
         self._password_1 = None
         self._password_2 = None
 
-        create_task(
-            self._send_hello_message(), name=f"Password enter message {self._user_id=}"
-        )
+        self._on_startup.append(self._send_hello_message())
 
     async def _send_hello_message(self):
         self._password_creation_message = await self._bot.send_message(
@@ -90,7 +82,7 @@ class _PasswordInput(BaseSubContext[str | None]):
         )
 
     async def _cancel_password_input(self, callback_query: CallbackQuery):
-        self._set_result(None)
+        self._exit_from_ctx()
 
         if self._enter_password_message is not None:
             await self._enter_password_message.delete()

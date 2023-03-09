@@ -1,4 +1,3 @@
-from asyncio import create_task
 from enum import Enum, unique
 from typing import Tuple
 
@@ -9,7 +8,7 @@ from aiogram.types import (
     Message,
 )
 
-from bot.dialogue.contexts.base import BaseSubContext, CallbackName
+from bot.dialogue.contexts.base import BaseContext, CallbackName
 from sec_store.record import Record, RecordId
 
 _CLOSE_VIEW_CALLBACK = CallbackName("_CLOSE_VIEW_CALLBACK")
@@ -23,15 +22,19 @@ class RecordAction(Enum):
     DELETE = 2
 
 
-class ViewRecord(BaseSubContext[Tuple[RecordAction, RecordId] | None]):
+class ViewRecord(BaseContext[Tuple[RecordAction, RecordId] | None]):
     def __init__(self, *args, record: Record) -> None:
         super().__init__(*args)
 
         self._record = record
-        create_task(
-            self._send_view_record_message(),
-            name=f"_send_view_record_message for {self._user_id=}",
-        )
+        self._view_rec_message: Message | None = None
+
+        self._on_startup.append(self._send_view_record_message())
+        self._on_shutdown.append(self._delete_messages())
+
+    async def _delete_messages(self):
+        if self._view_rec_message is not None:
+            await self._view_rec_message.delete()
 
     async def _send_view_record_message(self):
         keyboard_markup = (
@@ -45,7 +48,7 @@ class ViewRecord(BaseSubContext[Tuple[RecordAction, RecordId] | None]):
         self._set_callback(_DELETE_CALLBACK, self._delete_callback)
         self._set_callback(_EDIT_CALLBACK, self._edit_callback)
 
-        await self._bot.send_message(
+        self._view_rec_message = await self._bot.send_message(
             self._user_id,
             (
                 f"Название: <code>{self._record.name}</code>\n"
@@ -56,17 +59,17 @@ class ViewRecord(BaseSubContext[Tuple[RecordAction, RecordId] | None]):
             reply_markup=keyboard_markup,
         )
 
-    async def _close_view_callback(self, callback_query: CallbackQuery):
-        self._set_result(None)
-        await callback_query.message.delete()
+    async def _close_view_callback(
+        self, callback_query: CallbackQuery
+    ):  # pylint: disable=unused-argument
+        self._exit_from_ctx()
 
-    async def _delete_callback(self, callback_query: CallbackQuery):
+    async def _delete_callback(
+        self, callback_query: CallbackQuery
+    ):  # pylint: disable=unused-argument
         self._set_result((RecordAction.DELETE, self._record.id))
-        await callback_query.message.delete()
 
-    async def _edit_callback(self, callback_query: CallbackQuery):
+    async def _edit_callback(
+        self, callback_query: CallbackQuery
+    ):  # pylint: disable=unused-argument
         self._set_result((RecordAction.EDIT, self._record.id))
-        await callback_query.message.delete()
-
-    async def _handle_message(self, message: Message):
-        await message.delete()

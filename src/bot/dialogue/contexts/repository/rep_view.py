@@ -19,7 +19,7 @@ _ADD_RECORD_CALLBACK = CallbackName("_ADD_RECORD_CALLBACK")
 _CLOSE_REPOSITORY = CallbackName("_CLOSE_REPOSITORY")
 
 
-class RepositoryViewCtx(BaseContext):
+class RepositoryViewCtx(BaseContext[None]):
     def __init__(self, *args, records_repository: RecordsRepository, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
@@ -96,7 +96,7 @@ class RepositoryViewCtx(BaseContext):
         await callback_query.message.delete()
 
     async def _close_repository_callback(self, callback_query: CallbackQuery):
-        self._set_ctx_over()
+        self._set_result(None)
         await callback_query.message.delete()
 
     async def _add_record_callback(self, callback_query: CallbackQuery):

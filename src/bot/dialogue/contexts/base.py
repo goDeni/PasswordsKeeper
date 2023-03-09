@@ -54,18 +54,6 @@ class _MessageHandling:
         await message.delete()
 
 
-class _CtxIsOver:
-    def __init__(self) -> None:
-        self.__ctx_is_over = False
-
-    @property
-    def ctx_is_over(self) -> bool:
-        return self.__ctx_is_over
-
-    def _set_ctx_over(self):
-        self.__ctx_is_over = True
-
-
 class _OnStartup:
     def __init__(self) -> None:
         self._on_startup: List[Coroutine] = []
@@ -82,12 +70,11 @@ _Default = object()
 
 
 class BaseContext(
-    Generic[_CtxResultType], _CallbackHandling, _MessageHandling, _CtxIsOver, _OnStartup
+    Generic[_CtxResultType], _CallbackHandling, _MessageHandling, _OnStartup
 ):
     def __init__(self, bot: Bot, user_id: int) -> None:
         _MessageHandling.__init__(self)
         _CallbackHandling.__init__(self)
-        _CtxIsOver.__init__(self)
         _OnStartup.__init__(self)
 
         self._bot = bot
@@ -123,7 +110,6 @@ class BaseContext(
 
     def _set_result(self, result: _CtxResultType):
         self.__result = result
-        self._set_ctx_over()
 
     @property
     def result(self) -> _CtxResultType:
@@ -131,6 +117,10 @@ class BaseContext(
             raise RuntimeError("self._result is default!")
 
         return self.__result
+
+    @property
+    def ctx_is_over(self) -> bool:
+        return self.__result is not _Default
 
     async def __remove_sub_ctx_if_needed(self):
         if self.__sub_ctx is None:

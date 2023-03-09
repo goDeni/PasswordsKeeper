@@ -1,4 +1,3 @@
-from asyncio import create_task
 from enum import Enum, unique
 
 from aiogram.types import (
@@ -46,11 +45,7 @@ class EditRecord(BaseSubContext[EditResult]):
         self._enter_new_field_value_message: Message | None
 
         self._edit_rec_message: Message | None = None
-
-        create_task(
-            self._send_or_update_edit_record_message(),
-            name=f"_send_view_record_message {self._user_id=}",
-        )
+        self._on_startup.append(self._send_or_update_edit_record_message())
 
     async def _send_or_update_edit_record_message(self):
         keyboard_markup = (

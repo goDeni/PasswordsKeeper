@@ -1,5 +1,3 @@
-from asyncio import create_task
-
 from aiogram import Bot
 from aiogram.types import Message
 
@@ -15,10 +13,7 @@ class OpenRepositoryCtx(BaseContext):
         super().__init__(bot, user_id)
 
         self._enter_password_message: Message | None = None
-        create_task(
-            self._send_enter_password_message(),
-            name=f"Send enter password message {user_id=}",
-        )
+        self._on_startup.append(self._send_enter_password_message())
 
     async def _send_enter_password_message(self):
         self._enter_password_message = await self._bot.send_message(

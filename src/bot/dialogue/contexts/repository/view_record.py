@@ -1,4 +1,3 @@
-from asyncio import create_task
 from enum import Enum, unique
 from typing import Tuple
 
@@ -23,10 +22,7 @@ class ViewRecord(BaseSubContext[Tuple[RecordAction, RecordId] | None]):
         super().__init__(*args)
 
         self._record = record
-        create_task(
-            self._send_view_record_message(),
-            name=f"_send_view_record_message for {self._user_id=}",
-        )
+        self._on_startup.append(self._send_view_record_message())
 
     async def _send_view_record_message(self):
         keyboard_markup = (

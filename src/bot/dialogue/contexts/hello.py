@@ -1,5 +1,3 @@
-from asyncio import create_task
-
 from aiogram import Bot
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -14,7 +12,7 @@ _OPEN_REPOSITORY_CALLBACK = CallbackName("_OPEN_REPOSITORY_CALLBACK")
 class HelloCtx(BaseContext):
     def __init__(self, bot: Bot, user_id: int) -> None:
         super().__init__(bot, user_id)
-        create_task(self._send_hello_message(), name=f"Send hello message {user_id=}")
+        self._on_startup.append(self._send_hello_message())
 
     async def _send_hello_message(self):
         if not user_has_repository(self._user_id):

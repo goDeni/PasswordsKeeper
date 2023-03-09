@@ -1,4 +1,3 @@
-from asyncio import create_task
 from functools import partial
 
 from aiogram.types import (
@@ -27,11 +26,7 @@ class RepositoryViewCtx(BaseContext):
         self._records_repository = records_repository
 
         self._records_view_message: Message | None = None
-
-        create_task(
-            self._send_records_view_message(),
-            name=f"Send records views message {self._user_id=}",
-        )
+        self._on_startup.append(self._send_records_view_message())
 
     async def _handle_sub_ctx_result(
         self, sub_ctx: AddRecord | ViewRecord | EditRecord

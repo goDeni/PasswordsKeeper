@@ -1,4 +1,4 @@
-from asyncio import create_task, gather
+from asyncio import gather
 from typing import List
 
 from aiogram.types import Message
@@ -16,11 +16,7 @@ class AddRecord(BaseSubContext[Record]):
         self._description_message: Message | None = None
 
         self._sent_messages: List[Message] = []
-
-        create_task(
-            self._send_enter_value_message(),
-            name=f"Enter value message for {self._user_id}",
-        )
+        self._on_startup.append(self._send_enter_value_message())
 
     async def _send_enter_value_message(self):
         self._sent_messages.append(

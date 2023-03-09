@@ -1,3 +1,4 @@
+from asyncio import create_task
 from functools import partial
 from logging import getLogger
 from typing import (
@@ -5,6 +6,7 @@ from typing import (
     Coroutine,
     Dict,
     Generic,
+    List,
     NewType,
     Optional,
     Type,
@@ -64,17 +66,32 @@ class _CtxIsOver:
         self.__ctx_is_over = True
 
 
+class _OnStartup:
+    def __init__(self) -> None:
+        self._on_startup: List[Coroutine] = []
+        create_task(self.__on_startup(), name=f"_on_startup {type(self)}")
+
+    async def __on_startup(self):
+        for startup_coro in self._on_startup:
+            await startup_coro
+
+
 _SubCtxResultType = TypeVar("_SubCtxResultType")  # pylint: disable=invalid-name
 _Default = object()
 
 
 class BaseSubContext(
-    Generic[_SubCtxResultType], _MessageHandling, _CallbackHandling, _CtxIsOver
+    Generic[_SubCtxResultType],
+    _MessageHandling,
+    _CallbackHandling,
+    _CtxIsOver,
+    _OnStartup,
 ):
     def __init__(self, bot: Bot, user_id: int) -> None:
         _MessageHandling.__init__(self)
         _CallbackHandling.__init__(self)
         _CtxIsOver.__init__(self)
+        _OnStartup.__init__(self)
 
         self._bot = bot
         self._user_id = user_id
@@ -94,11 +111,12 @@ class BaseSubContext(
         return self._result
 
 
-class BaseContext(_CallbackHandling, _MessageHandling, _CtxIsOver):
+class BaseContext(_CallbackHandling, _MessageHandling, _CtxIsOver, _OnStartup):
     def __init__(self, bot: Bot, user_id: int) -> None:
         _MessageHandling.__init__(self)
         _CallbackHandling.__init__(self)
         _CtxIsOver.__init__(self)
+        _OnStartup.__init__(self)
 
         self._bot = bot
         self._user_id = user_id

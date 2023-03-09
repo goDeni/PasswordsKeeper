@@ -1,5 +1,3 @@
-from asyncio import create_task
-
 from aiogram import Bot
 from aiogram.types import (
     CallbackQuery,
@@ -19,13 +17,9 @@ _CANCEL_PASSWORD_INPUT = CallbackName("_CANCEL_PASSWORD_INPUT")
 class InitializeRepCtx(BaseContext):
     def __init__(self, bot: Bot, user_id: int) -> None:
         super().__init__(bot, user_id)
-
         self._password_input: _PasswordInput | None = None
 
-        create_task(
-            self._send_init_keyboard(),
-            name=f"Send initialize rep keyboard for {user_id=}",
-        )
+        self._on_startup.append(self._send_init_keyboard())
 
     async def _handle_sub_ctx_result(self, sub_ctx: "_PasswordInput"):
         if sub_ctx.result is not None:
@@ -69,9 +63,7 @@ class _PasswordInput(BaseSubContext[str | None]):
         self._password_1 = None
         self._password_2 = None
 
-        create_task(
-            self._send_hello_message(), name=f"Password enter message {self._user_id=}"
-        )
+        self._on_startup.append(self._send_hello_message())
 
     async def _send_hello_message(self):
         self._password_creation_message = await self._bot.send_message(

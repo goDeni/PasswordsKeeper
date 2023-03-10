@@ -13,4 +13,5 @@ RUN \
     --mount=type=bind,from=build-stage,source=/build/dist/,target=/tmp/dist \
     pip install /tmp/dist/passwords_keeper-*.whl
 
+WORKDIR /app
 CMD [ "passwords_keeper" ]

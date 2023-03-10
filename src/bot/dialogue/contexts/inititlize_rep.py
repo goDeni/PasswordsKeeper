@@ -7,6 +7,7 @@ from aiogram.types import (
 )
 
 from bot.dialogue.contexts.base import BaseContext, CallbackName
+from bot.dialogue.contexts.common import delete_messages
 from bot.user_reps import initialize_user_repository
 from sec_store.key import hash_key
 
@@ -29,11 +30,11 @@ class InitializeRepCtx(BaseContext):
         self._exit_from_ctx()
 
     async def _handle_message(self, message: Message):
-        await message.delete()
+        await delete_messages(message)
 
     async def _create_repositiry_callback(self, callback_query: CallbackQuery):
         self._set_sub_ctx(_PasswordInput(self._bot, self._user_id))
-        await callback_query.message.delete()
+        await delete_messages(callback_query.message)
 
     async def _send_init_keyboard(self):
         keyboard_markup = InlineKeyboardMarkup(row_width=3)
@@ -48,7 +49,7 @@ class InitializeRepCtx(BaseContext):
             self._user_id, "Выберите действие", reply_markup=keyboard_markup
         )
 
-        self._set_callback(
+        self._callbacks_emitter.set_handler(
             _CREATE_REPOSITORY_CALLBACK, self._create_repositiry_callback
         )
 
@@ -66,6 +67,7 @@ class _PasswordInput(BaseContext[str | None]):
         self._on_startup.append(self._send_hello_message())
 
     async def _send_hello_message(self):
+        # FIXME: Вынести это в HelloCtx
         self._password_creation_message = await self._bot.send_message(
             self._user_id,
             "Создание пароля",
@@ -76,22 +78,19 @@ class _PasswordInput(BaseContext[str | None]):
                 )
             ),
         )
-        self._set_callback(_CANCEL_PASSWORD_INPUT, self._cancel_password_input)
+        self._callbacks_emitter.set_handler(
+            _CANCEL_PASSWORD_INPUT, self._cancel_password_input
+        )
         self._enter_password_message = await self._bot.send_message(
             self._user_id, "Придумайте пароль"
         )
 
     async def _cancel_password_input(self, callback_query: CallbackQuery):
         self._exit_from_ctx()
-
-        if self._enter_password_message is not None:
-            await self._enter_password_message.delete()
-        await callback_query.message.delete()
+        await delete_messages(self._enter_password_message, callback_query.message)
 
     async def _handle_message(self, message: Message):
-        await message.delete()
-        if self._enter_password_message is not None:
-            await self._enter_password_message.delete()
+        await delete_messages(message, self._enter_password_message)
 
         if self._password_1 is None:
             self._password_1 = message.text
@@ -107,7 +106,6 @@ class _PasswordInput(BaseContext[str | None]):
             )
             return
 
-        if self._password_creation_message is not None:
-            await self._password_creation_message.delete()
+        await delete_messages(self._password_creation_message)
 
         self._set_result(self._password_1)

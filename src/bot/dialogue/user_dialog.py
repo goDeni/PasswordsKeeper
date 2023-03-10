@@ -28,16 +28,28 @@ class UserDialog:
 
         self._ctx: BaseContext = default_ctx_class(bot, self._user_id)
 
-        create_task(self._watch_ctx_changing(), name=f"Watch ctx changing {user_id=}")
+        self._watch_task = create_task(
+            self._watch_ctx_changing(), name=f"Watch ctx changing {user_id=}"
+        )
+
+    async def shutdown(self):
+        async with self._lock:
+            self._watch_task.cancel()
+            await self._ctx.shutdown()
+
+    async def handle_command(self, message: Message):
+        async with self._lock:
+            await self._ctx.handle_command(message)
+            self._check_ctx_change.set()
 
     async def handle_message(self, message: Message):
         async with self._lock:
             await self._ctx.handle_message(message)
             self._check_ctx_change.set()
 
-    async def handle_callback(self, callback: str, query: CallbackQuery):
+    async def handle_callback(self, query: CallbackQuery):
         async with self._lock:
-            await self._ctx.handle_callback(callback, query)
+            await self._ctx.handle_callback(query)
             self._check_ctx_change.set()
 
     async def _watch_ctx_changing(self):

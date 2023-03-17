@@ -2,6 +2,7 @@ from aiogram import Bot
 from aiogram.types import Message
 
 from bot.dialogue.contexts.base import BaseContext
+from bot.dialogue.contexts.common import delete_messages
 from bot.dialogue.contexts.repository.rep_view import RepositoryViewCtx
 from bot.user_reps import get_user_repository
 from sec_store.exceptions import WrongKeyHashError
@@ -21,13 +22,13 @@ class OpenRepositoryCtx(BaseContext):
         )
 
     async def _handle_message(self, message: Message):
-        await message.delete()
+        await delete_messages(message, self._enter_password_message)
+
         if self._enter_password_message is None:
             return
 
+        self._enter_password_message = None
         keyhash = hash_key(message.text)
-
-        await self._enter_password_message.delete()
         try:
             repository = get_user_repository(self._user_id, keyhash)
         except WrongKeyHashError:

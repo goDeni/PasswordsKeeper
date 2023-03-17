@@ -1,4 +1,5 @@
 import logging
+from asyncio import gather
 from typing import Dict
 
 from aiogram import Bot, Dispatcher, executor
@@ -18,15 +19,27 @@ _DIALOGUES: Dict[int, UserDialog] = {}
 
 
 @dp.callback_query_handler()
-async def callbacks_handler(query: CallbackQuery):
+async def _callbacks_handler(query: CallbackQuery):
     dialog = _get_user_dialog(query.from_user.id)
-    await dialog.handle_callback(query.data, query)
+    await dialog.handle_callback(query)
+
+
+@dp.message_handler(commands=["close"])
+async def _close_command_handler(message: Message):
+    await gather(
+        _remove_user_dialog(message.from_user.id),
+        message.answer("🌚"),
+        message.delete(),
+    )
 
 
 @dp.message_handler()
-async def messages_handler(message: Message):
+async def _messages_handler(message: Message):
     dialog = _get_user_dialog(message.from_user.id)
-    await dialog.handle_message(message)
+    if message.is_command():
+        await dialog.handle_command(message)
+    else:
+        await dialog.handle_message(message)
 
 
 def _get_user_dialog(user_id: int) -> UserDialog:
@@ -34,6 +47,12 @@ def _get_user_dialog(user_id: int) -> UserDialog:
         _DIALOGUES[user_id] = UserDialog(bot, HelloCtx, user_id)
 
     return _DIALOGUES[user_id]
+
+
+async def _remove_user_dialog(user_id: int):
+    dialog = _DIALOGUES.pop(user_id, None)
+    if dialog is not None:
+        await dialog.shutdown()
 
 
 def main():

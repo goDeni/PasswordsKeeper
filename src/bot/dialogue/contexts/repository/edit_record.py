@@ -6,9 +6,10 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     Message,
 )
-from aiogram.utils.exceptions import MessageNotModified
 
 from bot.dialogue.contexts.base import BaseContext, CallbackName
+from bot.dialogue.contexts.commands import SHOW_COMMAND
+from bot.dialogue.contexts.common import delete_messages
 from sec_store.record import Record
 
 _EDIT_NAME = CallbackName("_EDIT_NAME")
@@ -31,6 +32,11 @@ class _Field(Enum):
     VALUE = 2
 
 
+_NEW_DESCRIPTION_TEXT = "Введите новое описание"
+_NEW_VALUE_TEXT = "Введите новое значение"
+_NEW_NAME_TEXT = "Введите новое название"
+
+
 class EditRecord(BaseContext[EditResult]):
     def __init__(self, *args, record: Record, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -46,25 +52,48 @@ class EditRecord(BaseContext[EditResult]):
 
         self._edit_rec_message: Message | None = None
 
-        self._on_startup.append(self._send_or_update_edit_record_message())
+        self._on_startup.append(self._send_edit_record_messages())
         self._on_shutdown.append(self._delete_messages())
 
+        self._commands_emitter.set_handler(SHOW_COMMAND, self._handle_show_command)
+
     async def _delete_messages(self):
-        if self._enter_new_field_value_message is not None:
-            await self._enter_new_field_value_message.delete()
-
-        if self._edit_rec_message is not None:
-            await self._edit_rec_message.delete()
-
-    async def _send_or_update_edit_record_message(self):
-        keyboard_markup = (
-            InlineKeyboardMarkup()
-            .row(InlineKeyboardButton("✏️ Название", callback_data=_EDIT_NAME))
-            .row(InlineKeyboardButton("✏️ Описание", callback_data=_EDIT_DESCRIPTION))
-            .row(InlineKeyboardButton("✏️ Значение", callback_data=_EDIT_VALUE))
-            .row(InlineKeyboardButton("❌ Отменить", callback_data=_CANCEL_EDIT))
-            .row(InlineKeyboardButton("💾 Сохранить", callback_data=_SAVE))
+        await delete_messages(
+            self._enter_new_field_value_message, self._edit_rec_message
         )
+
+    async def _handle_show_command(self, message: Message):
+        await delete_messages(message)
+        await self._send_edit_record_messages(self._changing_field)
+
+    async def _send_edit_record_messages(self, changing_field: _Field | None = None):
+        self._callbacks_emitter.remove_all_handlers()
+        self._changing_field = changing_field
+
+        keyboard_markup = InlineKeyboardMarkup()
+        if changing_field is None:
+            keyboard_markup.row(
+                InlineKeyboardButton("✏️ Название", callback_data=_EDIT_NAME),
+            ).row(
+                InlineKeyboardButton("✏️ Описание", callback_data=_EDIT_DESCRIPTION),
+            ).row(
+                InlineKeyboardButton("✏️ Значение", callback_data=_EDIT_VALUE),
+            )
+            self._callbacks_emitter.set_handler(_EDIT_NAME, self._edit_name_callback)
+            self._callbacks_emitter.set_handler(
+                _EDIT_DESCRIPTION, self._edit_description_callback
+            )
+            self._callbacks_emitter.set_handler(_EDIT_VALUE, self._edit_value_callback)
+
+        keyboard_markup.row(
+            InlineKeyboardButton("❌ Отменить", callback_data=_CANCEL_EDIT),
+        ).row(
+            InlineKeyboardButton("💾 Сохранить", callback_data=_SAVE),
+        )
+
+        self._callbacks_emitter.set_handler(_CANCEL_EDIT, self._cancel_edit_callback)
+
+        self._callbacks_emitter.set_handler(_SAVE, self._save_callback)
         message_text = (
             f"Предпросмотр:\n"
             f"\n"
@@ -73,36 +102,32 @@ class EditRecord(BaseContext[EditResult]):
             f"Значение: <code>{self._new_value}</code>\n"
         )
 
-        if self._edit_rec_message is None:
-            self._set_callback(_EDIT_NAME, self._edit_name_callback)
-            self._set_callback(_EDIT_DESCRIPTION, self._edit_description_callback)
-            self._set_callback(_EDIT_VALUE, self._edit_value_callback)
-            self._set_callback(_CANCEL_EDIT, self._cancel_edit_callback)
-            self._set_callback(_SAVE, self._save_callback)
+        await delete_messages(
+            self._edit_rec_message, self._enter_new_field_value_message
+        )
+        self._edit_rec_message = await self._bot.send_message(
+            self._user_id,
+            text=message_text,
+            parse_mode="HTML",
+            reply_markup=keyboard_markup,
+        )
 
-        if self._edit_rec_message is None:
-            self._edit_rec_message = await self._bot.send_message(
-                self._user_id,
-                text=message_text,
-                parse_mode="HTML",
-                reply_markup=keyboard_markup,
-            )
-            return
+        changing_field_text = _NEW_NAME_TEXT
+        match changing_field:
+            case _Field.DESCRIPTION:
+                changing_field_text = _NEW_DESCRIPTION_TEXT
+            case _Field.VALUE:
+                changing_field_text = _NEW_VALUE_TEXT
+            case None:
+                return
 
-        try:
-            self._edit_rec_message = await self._edit_rec_message.edit_text(
-                text=message_text,
-                parse_mode="HTML",
-                reply_markup=keyboard_markup,
-            )
-        except MessageNotModified:
-            pass
+        self._enter_new_field_value_message = await self._bot.send_message(
+            self._user_id, changing_field_text
+        )
 
     async def _handle_message(self, message: Message):
-        await message.delete()
-        if self._enter_new_field_value_message:
-            await self._enter_new_field_value_message.delete()
-            self._enter_new_field_value_message = None
+        await delete_messages(message, self._enter_new_field_value_message)
+        self._enter_new_field_value_message = None
 
         match self._changing_field:
             case _Field.NAME:
@@ -114,32 +139,22 @@ class EditRecord(BaseContext[EditResult]):
             case _:
                 return
 
-        self._changing_field = None
-        await self._send_or_update_edit_record_message()
+        await self._send_edit_record_messages()
 
     async def _edit_name_callback(
         self, callback_query: CallbackQuery
     ):  # pylint: disable=unused-argument
-        self._changing_field = _Field.NAME
-        self._enter_new_field_value_message = await self._bot.send_message(
-            self._user_id, "Введите новое название"
-        )
+        await self._send_edit_record_messages(_Field.NAME)
 
     async def _edit_description_callback(
         self, callback_query: CallbackQuery
     ):  # pylint: disable=unused-argument
-        self._changing_field = _Field.DESCRIPTION
-        self._enter_new_field_value_message = await self._bot.send_message(
-            self._user_id, "Введите новое описание"
-        )
+        await self._send_edit_record_messages(_Field.DESCRIPTION)
 
     async def _edit_value_callback(
         self, callback_query: CallbackQuery
     ):  # pylint: disable=unused-argument
-        self._changing_field = _Field.VALUE
-        self._enter_new_field_value_message = await self._bot.send_message(
-            self._user_id, "Введите новое значение"
-        )
+        await self._send_edit_record_messages(_Field.VALUE)
 
     async def _cancel_edit_callback(
         self, callback_query: CallbackQuery

@@ -9,6 +9,8 @@ from aiogram.types import (
 )
 
 from bot.dialogue.contexts.base import BaseContext, CallbackName
+from bot.dialogue.contexts.commands import SHOW_COMMAND
+from bot.dialogue.contexts.common import delete_messages
 from sec_store.record import Record, RecordId
 
 _CLOSE_VIEW_CALLBACK = CallbackName("_CLOSE_VIEW_CALLBACK")
@@ -29,14 +31,19 @@ class ViewRecord(BaseContext[Tuple[RecordAction, RecordId] | None]):
         self._record = record
         self._view_rec_message: Message | None = None
 
-        self._on_startup.append(self._send_view_record_message())
+        self._on_startup.append(self._send_view_record_keyboard())
         self._on_shutdown.append(self._delete_messages())
 
-    async def _delete_messages(self):
-        if self._view_rec_message is not None:
-            await self._view_rec_message.delete()
+        self._commands_emitter.set_handler(SHOW_COMMAND, self._handle_show_command)
 
-    async def _send_view_record_message(self):
+    async def _delete_messages(self):
+        await delete_messages(self._view_rec_message)
+
+    async def _handle_show_command(self, message: Message):
+        await delete_messages(message)
+        await self._send_view_record_keyboard()
+
+    async def _send_view_record_keyboard(self):
         keyboard_markup = (
             InlineKeyboardMarkup()
             .row(InlineKeyboardButton("✏️", callback_data=_EDIT_CALLBACK))
@@ -44,10 +51,13 @@ class ViewRecord(BaseContext[Tuple[RecordAction, RecordId] | None]):
             .row(InlineKeyboardButton("⬅️ Закрыть", callback_data=_CLOSE_VIEW_CALLBACK))
         )
 
-        self._set_callback(_CLOSE_VIEW_CALLBACK, self._close_view_callback)
-        self._set_callback(_DELETE_CALLBACK, self._delete_callback)
-        self._set_callback(_EDIT_CALLBACK, self._edit_callback)
+        self._callbacks_emitter.set_handler(
+            _CLOSE_VIEW_CALLBACK, self._close_view_callback
+        )
+        self._callbacks_emitter.set_handler(_DELETE_CALLBACK, self._delete_callback)
+        self._callbacks_emitter.set_handler(_EDIT_CALLBACK, self._edit_callback)
 
+        await delete_messages(self._view_rec_message)
         self._view_rec_message = await self._bot.send_message(
             self._user_id,
             (

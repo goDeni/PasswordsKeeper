@@ -5,7 +5,6 @@ from time import monotonic
 from typing import (
     Callable,
     Coroutine,
-    Dict,
     Generic,
     List,
     NewType,
@@ -18,45 +17,19 @@ from typing import (
 from aiogram import Bot
 from aiogram.types import CallbackQuery, Message
 
+from bot.dialogue.contexts.common import delete_messages
+from bot.dialogue.contexts.event_emitter import EventEmitter, UnexpectedEventEmit
+
 logger = getLogger(__name__)
+
 CallbackName = NewType("CallbackName", str)
-
-
-class _CallbackHandling:
-    def __init__(self) -> None:
-        self.__callbacks: Dict[CallbackName, Callable[[CallbackQuery], Coroutine]] = {}
-
-    @final
-    async def _handle_callback(
-        self, callback: CallbackName, callback_query: CallbackQuery
-    ):
-        callback_fn = self.__callbacks.get(callback, None)
-        if callback_fn is None:
-            logger.warning(
-                "Handled unexpected callback '%s' type=%s",
-                callback,
-                type(self),
-            )
-            await callback_query.message.delete()
-            return
-
-        await callback_fn(callback_query=callback_query)
-
-    def _set_callback(
-        self,
-        callback: CallbackName,
-        callback_fn: Callable[[CallbackQuery], Coroutine],
-    ):
-        self.__callbacks[callback] = callback_fn
-
-
-class _MessageHandling:
-    async def _handle_message(self, message: Message):
-        await message.delete()
+Command = NewType("Command", str)
 
 
 class _OnStartupShutdown:
     def __init__(self) -> None:
+        self._called = False
+
         self._on_startup: List[Coroutine | Callable] = []
         self._on_shutdown: List[Coroutine | Callable] = []
 
@@ -77,6 +50,10 @@ class _OnStartupShutdown:
                 shutdown_fn()
 
     async def shutdown(self):
+        if self._called:
+            raise RuntimeError("shutdown already called")
+        self._called = True
+
         await self.__on_shutdown()
 
 
@@ -87,15 +64,18 @@ _Exit = object()
 
 
 class BaseContext(
-    Generic[_CtxResultType], _CallbackHandling, _MessageHandling, _OnStartupShutdown
-):
+    Generic[_CtxResultType], _OnStartupShutdown
+):  # pylint: disable=too-many-instance-attributes
     def __init__(self, bot: Bot, user_id: int) -> None:
-        _MessageHandling.__init__(self)
-        _CallbackHandling.__init__(self)
         _OnStartupShutdown.__init__(self)
 
         self._bot = bot
         self._user_id = user_id
+
+        self._callbacks_emitter: EventEmitter[
+            CallbackName, CallbackQuery
+        ] = EventEmitter()
+        self._commands_emitter: EventEmitter[Command, Message] = EventEmitter()
 
         self.__last_usage = monotonic()
         self.__new_ctx: Callable[[], "BaseContext"] = None
@@ -127,28 +107,66 @@ class BaseContext(
 
         await self.__sub_ctx.shutdown()
 
-    @final
-    async def handle_message(self, *args, **kwargs):
-        self.__last_usage = monotonic()
-        instance = self if self.__sub_ctx is None else self.__sub_ctx
-        await instance._handle_message(  # pylint: disable=protected-access
-            *args, **kwargs
-        )
-        await self.__remove_sub_ctx_if_needed()
+    async def _handle_message(self, message: Message):
+        await delete_messages(message)
 
-    @final
-    async def handle_callback(self, *args, **kwargs):
-        self.__last_usage = monotonic()
-        instance = self if self.__sub_ctx is None else self.__sub_ctx
-        await instance._handle_callback(  # pylint: disable=protected-access
-            *args, **kwargs
-        )
-        await self.__remove_sub_ctx_if_needed()
+    async def __handle_callback(self, query: CallbackQuery):
+        callback = CallbackName(query.data)
+        try:
+            await self._callbacks_emitter.emit(callback, query)
+        except UnexpectedEventEmit:
+            logger.warning(
+                "Handled unexpected callback '%s', user_id=%s type=%s",
+                callback,
+                self._user_id,
+                type(self),
+            )
+            await delete_messages(query.message)
+
+    async def __handle_command(self, message: Message):
+        command = Command(message.get_command(pure=True))
+        try:
+            await self._commands_emitter.emit(command, message)
+        except UnexpectedEventEmit:
+            logger.warning(
+                "Handled unexpected command '%s', user_id=%s type=%s",
+                command,
+                self._user_id,
+                type(self),
+            )
+            await delete_messages(message)
 
     async def _handle_sub_ctx_result(
         self, sub_ctx: "BaseContext[_SubCtxResultType]"
     ):  # pylint: disable=unused-argument
         pass
+
+    @final
+    async def handle_message(self, *args, **kwargs):
+        self.__last_usage = monotonic()
+        if self.__sub_ctx is None:
+            await self._handle_message(*args, **kwargs)
+        else:
+            await self.__sub_ctx.handle_message(*args, **kwargs)
+        await self.__remove_sub_ctx_if_needed()
+
+    @final
+    async def handle_callback(self, *args, **kwargs):
+        self.__last_usage = monotonic()
+        if self.__sub_ctx is None:
+            await self.__handle_callback(*args, **kwargs)
+        else:
+            await self.__sub_ctx.handle_callback(*args, **kwargs)
+        await self.__remove_sub_ctx_if_needed()
+
+    @final
+    async def handle_command(self, *args, **kwargs):
+        self.__last_usage = monotonic()
+        if self.__sub_ctx is None:
+            await self.__handle_command(*args, **kwargs)
+        else:
+            await self.__sub_ctx.handle_command(*args, **kwargs)
+        await self.__remove_sub_ctx_if_needed()
 
     def _set_sub_ctx(self, sub_ctx: "BaseContext[_SubCtxResultType]"):
         self.__sub_ctx = sub_ctx

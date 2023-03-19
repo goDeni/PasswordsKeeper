@@ -1,16 +1,12 @@
 from enum import Enum, unique
 from typing import Tuple
 
-from aiogram.types import (
-    CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    Message,
-)
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from bot.dialogue.contexts.base import BaseContext, CallbackName
+from bot.dialogue.contexts.base import BaseContext
 from bot.dialogue.contexts.commands import SHOW_COMMAND
 from bot.dialogue.contexts.common import delete_messages
+from dialog.context import CallbackName
 from sec_store.record import Record, RecordId
 
 _CLOSE_VIEW_CALLBACK = CallbackName("_CLOSE_VIEW_CALLBACK")
@@ -31,8 +27,8 @@ class ViewRecord(BaseContext[Tuple[RecordAction, RecordId] | None]):
         self._record = record
         self._view_rec_message: Message | None = None
 
-        self._on_startup.append(self._send_view_record_keyboard())
-        self._on_shutdown.append(self._delete_messages())
+        self.add_on_startup(self._send_view_record_keyboard)
+        self.add_on_shutdown(self._delete_messages)
 
         self._commands_emitter.set_handler(SHOW_COMMAND, self._handle_show_command)
 
@@ -70,16 +66,14 @@ class ViewRecord(BaseContext[Tuple[RecordAction, RecordId] | None]):
         )
 
     async def _close_view_callback(
-        self, callback_query: CallbackQuery
+        self, message: Message
     ):  # pylint: disable=unused-argument
         self._exit_from_ctx()
 
     async def _delete_callback(
-        self, callback_query: CallbackQuery
+        self, message: Message
     ):  # pylint: disable=unused-argument
         self._set_result((RecordAction.DELETE, self._record.id))
 
-    async def _edit_callback(
-        self, callback_query: CallbackQuery
-    ):  # pylint: disable=unused-argument
+    async def _edit_callback(self, message: Message):  # pylint: disable=unused-argument
         self._set_result((RecordAction.EDIT, self._record.id))

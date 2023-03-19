@@ -17,8 +17,8 @@ class AddRecord(BaseContext[Record | None]):
         self._description_message: Message | None = None
 
         self._sent_messages: List[Message] = []
-        self._on_startup.append(self._send_enter_value_message())
-        self._on_shutdown.append(self._delete_messages())
+        self.add_on_startup(self._send_enter_value_message)
+        self.add_on_shutdown(self._delete_messages)
 
         self._commands_emitter.set_handler(SHOW_COMMAND, self._handle_show_command)
 

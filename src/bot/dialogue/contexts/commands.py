@@ -1,3 +1,3 @@
-from bot.dialogue.contexts.base import Command
+from dialog.context import Command
 
 SHOW_COMMAND = Command("show")

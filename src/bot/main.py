@@ -59,7 +59,3 @@ async def _remove_user_dialog(user_id: int):
 
 def main():
     executor.start_polling(dp, skip_updates=True)
-
-
-if __name__ == "__main__":
-    main()

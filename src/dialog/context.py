@@ -3,7 +3,6 @@ from logging import getLogger
 from time import monotonic
 from typing import Callable, Generic, Optional, TypeVar, final
 
-
 from dialog.event_emitter import EventEmitter, UnexpectedEventEmit
 from dialog.on_startup_shutdown import OnStartupShutdown
 from dialog.types import CallbackName, Command, Message

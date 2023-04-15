@@ -1,17 +1,13 @@
 from aiogram import Bot
-from aiogram.types import (
-    CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    Message,
-)
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from bot.dialogue.contexts.base import BaseContext, CallbackName
+from bot.dialogue.contexts.base import BaseContext
 from bot.dialogue.contexts.commands import SHOW_COMMAND
 from bot.dialogue.contexts.common import delete_messages
 from bot.dialogue.contexts.inititlize_rep import InitializeRepCtx
 from bot.dialogue.contexts.open_rep import OpenRepositoryCtx
 from bot.user_reps import user_has_repository
+from dialog.context import CallbackName
 
 _OPEN_REPOSITORY_CALLBACK = CallbackName("_OPEN_REPOSITORY_CALLBACK")
 
@@ -22,7 +18,7 @@ class HelloCtx(BaseContext):
 
         self._keyboard_message: Message | None = None
 
-        self._on_startup.append(self._show_keyboard())
+        self.add_on_startup(self._show_keyboard)
         self._commands_emitter.set_handler(SHOW_COMMAND, self._show_command)
 
     async def _show_command(self, message: Message):
@@ -31,7 +27,7 @@ class HelloCtx(BaseContext):
 
     async def _show_keyboard(self):
         if not user_has_repository(self._user_id):
-            self._set_new_ctx(InitializeRepCtx)
+            self._set_new_ctx(InitializeRepCtx, self._bot, self._user_id)
             return
 
         keyboard_markup = InlineKeyboardMarkup(row_width=3)
@@ -50,6 +46,6 @@ class HelloCtx(BaseContext):
             _OPEN_REPOSITORY_CALLBACK, self._open_repository_callback
         )
 
-    async def _open_repository_callback(self, callback_query: CallbackQuery):
-        self._set_new_ctx(OpenRepositoryCtx)
-        await delete_messages(callback_query.message)
+    async def _open_repository_callback(self, message: Message):
+        self._set_new_ctx(OpenRepositoryCtx, self._bot, self._user_id)
+        await delete_messages(message)

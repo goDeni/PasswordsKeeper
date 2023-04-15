@@ -1,14 +1,10 @@
 from aiogram import Bot
-from aiogram.types import (
-    CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    Message,
-)
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from bot.dialogue.contexts.base import BaseContext, CallbackName
+from bot.dialogue.contexts.base import BaseContext
 from bot.dialogue.contexts.common import delete_messages
 from bot.user_reps import initialize_user_repository
+from dialog.context import CallbackName
 from sec_store.key import hash_key
 
 _CREATE_REPOSITORY_CALLBACK = CallbackName("_CREATE_REPOSITORY_CALLBACK")
@@ -20,7 +16,7 @@ class InitializeRepCtx(BaseContext):
         super().__init__(bot, user_id)
         self._password_input: _PasswordInput | None = None
 
-        self._on_startup.append(self._send_init_keyboard())
+        self.add_on_startup(self._send_init_keyboard)
 
     async def _handle_sub_ctx_result(self, sub_ctx: "_PasswordInput"):
         if sub_ctx.result is not None:
@@ -32,9 +28,9 @@ class InitializeRepCtx(BaseContext):
     async def _handle_message(self, message: Message):
         await delete_messages(message)
 
-    async def _create_repositiry_callback(self, callback_query: CallbackQuery):
+    async def _create_repositiry_callback(self, message: Message):
         self._set_sub_ctx(_PasswordInput(self._bot, self._user_id))
-        await delete_messages(callback_query.message)
+        await delete_messages(message)
 
     async def _send_init_keyboard(self):
         keyboard_markup = InlineKeyboardMarkup(row_width=3)
@@ -64,7 +60,7 @@ class _PasswordInput(BaseContext[str | None]):
         self._password_1 = None
         self._password_2 = None
 
-        self._on_startup.append(self._send_hello_message())
+        self.add_on_startup(self._send_hello_message)
 
     async def _send_hello_message(self):
         # FIXME: Вынести это в HelloCtx
@@ -85,9 +81,9 @@ class _PasswordInput(BaseContext[str | None]):
             self._user_id, "Придумайте пароль"
         )
 
-    async def _cancel_password_input(self, callback_query: CallbackQuery):
+    async def _cancel_password_input(self, message: Message):
         self._exit_from_ctx()
-        await delete_messages(self._enter_password_message, callback_query.message)
+        await delete_messages(self._enter_password_message, message)
 
     async def _handle_message(self, message: Message):
         await delete_messages(message, self._enter_password_message)

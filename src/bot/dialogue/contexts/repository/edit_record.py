@@ -1,15 +1,11 @@
 from enum import Enum, unique
 
-from aiogram.types import (
-    CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    Message,
-)
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from bot.dialogue.contexts.base import BaseContext, CallbackName
+from bot.dialogue.contexts.base import BaseContext
 from bot.dialogue.contexts.commands import SHOW_COMMAND
 from bot.dialogue.contexts.common import delete_messages
+from dialog.context import CallbackName
 from sec_store.record import Record
 
 _EDIT_NAME = CallbackName("_EDIT_NAME")
@@ -52,8 +48,8 @@ class EditRecord(BaseContext[EditResult]):
 
         self._edit_rec_message: Message | None = None
 
-        self._on_startup.append(self._send_edit_record_messages())
-        self._on_shutdown.append(self._delete_messages())
+        self.add_on_startup(self._send_edit_record_messages)
+        self.add_on_shutdown(self._delete_messages)
 
         self._commands_emitter.set_handler(SHOW_COMMAND, self._handle_show_command)
 
@@ -142,28 +138,26 @@ class EditRecord(BaseContext[EditResult]):
         await self._send_edit_record_messages()
 
     async def _edit_name_callback(
-        self, callback_query: CallbackQuery
+        self, message: Message
     ):  # pylint: disable=unused-argument
         await self._send_edit_record_messages(_Field.NAME)
 
     async def _edit_description_callback(
-        self, callback_query: CallbackQuery
+        self, message: Message
     ):  # pylint: disable=unused-argument
         await self._send_edit_record_messages(_Field.DESCRIPTION)
 
     async def _edit_value_callback(
-        self, callback_query: CallbackQuery
+        self, message: Message
     ):  # pylint: disable=unused-argument
         await self._send_edit_record_messages(_Field.VALUE)
 
     async def _cancel_edit_callback(
-        self, callback_query: CallbackQuery
+        self, message: Message
     ):  # pylint: disable=unused-argument
         self._set_result(EditResult.CANCEL)
 
-    async def _save_callback(
-        self, callback_query: CallbackQuery
-    ):  # pylint: disable=unused-argument
+    async def _save_callback(self, message: Message):  # pylint: disable=unused-argument
         self._record.name = self._new_name
         self._record.description = self._new_description
         self._record.value = self._new_value

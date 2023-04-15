@@ -14,7 +14,7 @@ class OpenRepositoryCtx(BaseContext):
         super().__init__(bot, user_id)
 
         self._enter_password_message: Message | None = None
-        self._on_startup.append(self._send_enter_password_message())
+        self.add_on_startup(self._send_enter_password_message)
 
     async def _send_enter_password_message(self):
         self._enter_password_message = await self._bot.send_message(
@@ -37,4 +37,4 @@ class OpenRepositoryCtx(BaseContext):
             )
             return
 
-        self._set_new_ctx(RepositoryViewCtx, records_repository=repository)
+        self._set_new_ctx(RepositoryViewCtx, self._bot, self._user_id, repository)

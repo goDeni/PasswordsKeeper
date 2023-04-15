@@ -1,16 +1,13 @@
-from aiogram.types import (
-    CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    Message,
-)
+from aiogram import Bot
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from bot.dialogue.contexts.base import BaseContext, CallbackName
+from bot.dialogue.contexts.base import BaseContext
 from bot.dialogue.contexts.commands import SHOW_COMMAND
 from bot.dialogue.contexts.common import delete_messages
 from bot.dialogue.contexts.repository.add_record import AddRecord
 from bot.dialogue.contexts.repository.edit_record import EditRecord, EditResult
 from bot.dialogue.contexts.repository.view_record import RecordAction, ViewRecord
+from dialog.context import CallbackName
 from sec_store.record import Record
 from sec_store.records_repository import RecordsRepository
 
@@ -22,15 +19,15 @@ _MAX_TIME_WITHOUT_USE = 60 * 10
 
 
 class RepositoryViewCtx(BaseContext[None]):
-    def __init__(self, *args, records_repository: RecordsRepository, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, bot: Bot, user_id: int, repository: RecordsRepository) -> None:
+        super().__init__(bot, user_id)
 
-        self._records_repository = records_repository
+        self._records_repository = repository
 
         self._records_view_message: Message | None = None
 
-        self._on_startup.append(self._send_records_keyboard())
-        self._on_shutdown.append(self._delete_messages())
+        self.add_on_startup(self._send_records_keyboard)
+        self.add_on_shutdown(self._delete_messages)
 
         self._commands_emitter.set_handler(SHOW_COMMAND, self._handle_show_command)
         self._kill_ctx_if_unused(
@@ -117,16 +114,16 @@ class RepositoryViewCtx(BaseContext[None]):
 
     async def _view_record_callback(
         self,
-        callback_query: CallbackQuery,
+        message: Message,
         record: Record,
     ):
         self._set_sub_ctx(ViewRecord(self._bot, self._user_id, record=record))
-        await delete_messages(callback_query.message)
+        await delete_messages(message)
 
-    async def _close_repository_callback(self, callback_query: CallbackQuery):
+    async def _close_repository_callback(self, message: Message):
         self._exit_from_ctx()
-        await delete_messages(callback_query.message)
+        await delete_messages(message)
 
-    async def _add_record_callback(self, callback_query: CallbackQuery):
+    async def _add_record_callback(self, message: Message):
         self._set_sub_ctx(AddRecord(self._bot, self._user_id))
-        await delete_messages(callback_query.message)
+        await delete_messages(message)

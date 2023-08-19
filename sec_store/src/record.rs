@@ -4,12 +4,13 @@ use uuid::Uuid;
 
 use crate::cipher::{decrypt_string, encrypt_string, EncryptedData, EncryptionKey, Result};
 
+pub type RecordId = String;
 pub type RecordField = (String, String);
 pub type EncryptedRecord = String;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct Record {
-    id: String,
+    id: RecordId,
     fields: Vec<RecordField>,
 }
 

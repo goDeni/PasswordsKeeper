@@ -3,10 +3,10 @@ use std::{collections::HashMap, path::PathBuf};
 
 use uuid::Uuid;
 
-use crate::cipher::{decrypt_string, encrypt_string, EncryptedData};
+use crate::cipher::{decrypt_string, encrypt_string, EncryptedData, EncryptionError};
 use crate::record::EncryptedRecord;
 use crate::{
-    cipher::{EncryptionKey, Result as ChipherResult},
+    cipher::EncryptionKey,
     record::{Record, RecordId},
 };
 use serde::{Deserialize, Serialize};
@@ -19,8 +19,19 @@ pub type UpdateResult<T> = std::result::Result<T, RecordDoesntExist>;
 pub struct RecordAlreadyExist;
 pub type AddResult<T> = std::result::Result<T, RecordAlreadyExist>;
 
+pub type OpenResult<T> = std::result::Result<T, RepositoryOpenError>;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RepositoryOpenError {
+    WrongPassword,
+    FileAccessError,
+    UnexpectedError,
+}
+
 type RepositoryId = String;
 type RecordsMap = HashMap<RecordId, Record>;
+
+#[derive(Debug)]
 pub struct RecordsRepository {
     pub identifier: RepositoryId,
     file: PathBuf,
@@ -41,26 +52,34 @@ impl RecordsRepository {
         }
     }
 
-    pub fn open(file: PathBuf, passwd: EncryptionKey) -> ChipherResult<RecordsRepository> {
-        let raw_rep =
-            serde_json::from_reader::<File, RawRepositoryJson>(File::open(file.clone()).unwrap())
-                .unwrap();
+    pub fn open(path: PathBuf, passwd: EncryptionKey) -> OpenResult<RecordsRepository> {
+        match File::open(path.clone()) {
+            Err(_) => Err(RepositoryOpenError::FileAccessError),
+            Ok(file) => {
+                let raw_rep = serde_json::from_reader::<File, RawRepositoryJson>(file).unwrap();
 
-        let identifier = decrypt_string(passwd, raw_rep.0)?;
-        let records = HashMap::from_iter(
-            raw_rep
-                .1
-                .iter()
-                .map(|encrypted_record| Record::decrypt(passwd, encrypted_record).unwrap())
-                .map(|record| (record.id.clone(), record)),
-        );
-
-        Ok(RecordsRepository {
-            file: file,
-            identifier: identifier,
-            passwd: passwd,
-            records: records,
-        })
+                match decrypt_string(passwd, raw_rep.0) {
+                    Err(EncryptionError::WrongPassword) => Err(RepositoryOpenError::WrongPassword),
+                    Err(EncryptionError::UnexpectedError) => {
+                        Err(RepositoryOpenError::UnexpectedError)
+                    }
+                    Ok(identifier) => Ok(RecordsRepository {
+                        file: path.clone(),
+                        identifier: identifier,
+                        passwd: passwd,
+                        records: HashMap::from_iter(
+                            raw_rep
+                                .1
+                                .iter()
+                                .map(|encrypted_record| {
+                                    Record::decrypt(passwd, encrypted_record).unwrap()
+                                })
+                                .map(|record| (record.id.clone(), record)),
+                        ),
+                    }),
+                }
+            }
+        }
     }
     pub fn save(&self) -> std::io::Result<PathBuf> {
         serde_json::to_writer(
@@ -116,7 +135,10 @@ impl RecordsRepository {
 mod tests {
     use tempdir::TempDir;
 
-    use crate::{record::Record, repository::RecordDoesntExist};
+    use crate::{
+        record::Record,
+        repository::{RecordDoesntExist, RepositoryOpenError},
+    };
 
     use super::RecordsRepository;
 
@@ -222,6 +244,30 @@ mod tests {
 
         assert_eq!(repo.update(record.clone()), Err(RecordDoesntExist));
         assert_eq!(repo.delete(&record.id), Err(RecordDoesntExist));
+
+        tmp_dir.close().unwrap();
+    }
+
+    #[test]
+    fn test_repository_open_with_wrong_passwd() {
+        let tmp_dir = TempDir::new("test_").unwrap();
+
+        let repo = RecordsRepository::new(tmp_dir.path().join("repo_file"), "One password");
+
+        let path = repo.save().unwrap();
+        let result = RecordsRepository::open(path, "Wrong passwd").unwrap_err();
+        assert_eq!(result, RepositoryOpenError::WrongPassword);
+
+        tmp_dir.close().unwrap();
+    }
+
+    #[test]
+    fn test_repository_open_missed_file() {
+        let tmp_dir = TempDir::new("test_").unwrap();
+        let result =
+            RecordsRepository::open(tmp_dir.path().join("any_file"), "Wrong passwd").unwrap_err();
+
+        assert_eq!(result, RepositoryOpenError::FileAccessError);
 
         tmp_dir.close().unwrap();
     }

@@ -8,10 +8,10 @@ pub type RecordId = String;
 pub type RecordField = (String, String);
 pub type EncryptedRecord = String;
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Record {
-    id: RecordId,
-    fields: Vec<RecordField>,
+    pub id: RecordId,
+    pub fields: Vec<RecordField>,
 }
 
 impl Record {
@@ -30,10 +30,10 @@ impl Record {
         .unwrap()
     }
 
-    pub fn decrypt(passwd: EncryptionKey, encrypted_record: EncryptedRecord) -> Result<Record> {
+    pub fn decrypt(passwd: EncryptionKey, encrypted_record: &EncryptedRecord) -> Result<Record> {
         Ok(serde_json::from_str::<Record>(&decrypt_string(
             passwd,
-            serde_json::from_str::<EncryptedData>(&encrypted_record).unwrap(),
+            serde_json::from_str::<EncryptedData>(encrypted_record).unwrap(),
         )?)
         .unwrap())
     }
@@ -54,7 +54,7 @@ mod tests {
         let fields = vec![(String::from("First"), String::from("1"))];
         let original_record = super::Record::new(fields.clone());
         let decrypted_record =
-            super::Record::decrypt(passwd, original_record.encrypt(passwd)).unwrap();
+            super::Record::decrypt(passwd, &original_record.encrypt(passwd)).unwrap();
 
         assert_eq!(original_record, decrypted_record);
         assert_eq!(decrypted_record.fields, fields);
@@ -64,7 +64,7 @@ mod tests {
     fn test_record_decryption_with_bad_passwd() {
         let fields = vec![(String::from("First"), String::from("1"))];
         let result =
-            super::Record::decrypt("Second", super::Record::new(fields.clone()).encrypt("One"));
+            super::Record::decrypt("Second", &super::Record::new(fields.clone()).encrypt("One"));
 
         let expected = crate::cipher::EncryptionError::WrongPassword;
         assert_eq!(result, Err(expected));

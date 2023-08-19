@@ -1,9 +1,10 @@
-dist
 *.pyc
-.pytest_cache
-.venv
-__pycache__
-.vscode
+.DS_Store
 .env
 .passwords_keeper_bot_data
+.pytest_cache
+.venv
+.vscode
+__pycache__
+dist
 poetry.lock

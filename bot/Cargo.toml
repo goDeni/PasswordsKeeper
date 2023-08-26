@@ -7,4 +7,6 @@ edition = "2021"
 
 [dependencies]
 sec_store = {path = "../sec_store"}
+
+[dev-dependencies]
 tempdir = "0.3.7"

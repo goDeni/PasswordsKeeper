@@ -1,5 +1,5 @@
 #![allow(dead_code)]
 
-mod cipher;
-mod record;
-mod repository;
+pub mod cipher;
+pub mod record;
+pub mod repository;

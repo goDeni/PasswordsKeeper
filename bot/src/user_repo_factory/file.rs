@@ -2,31 +2,33 @@ use std::path::PathBuf;
 
 use sec_store::{
     cipher::EncryptionKey,
-    file_repository::{OpenResult, RecordsFileRepository},
+    file_repository::{OpenRecordsFileRepository, RecordsFileRepository},
+    repository::{OpenRepository, OpenResult},
 };
+
+use crate::user_repo_factory::{InitRepoResult, RepositoriesFactory, RepositoryAlreadyExist};
 
 type UserId = &'static str;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct RepositoryAlreadyExist;
-pub type InitRepoResult<T> = std::result::Result<T, RepositoryAlreadyExist>;
-
-struct RepositoriesFactory(PathBuf);
-impl RepositoriesFactory {
+struct FileRepositoriesFactory(PathBuf);
+impl FileRepositoriesFactory {
     fn get_repository_path(&self, user_id: UserId) -> PathBuf {
         self.0.join(format!("rep_{}", user_id))
     }
-    pub fn user_has_repository(&self, user_id: UserId) -> bool {
+}
+
+impl RepositoriesFactory<RecordsFileRepository> for FileRepositoriesFactory {
+    fn user_has_repository(&self, user_id: UserId) -> bool {
         self.get_repository_path(user_id).exists()
     }
-    pub fn get_user_repository(
+    fn get_user_repository(
         &self,
         user_id: UserId,
         passwd: EncryptionKey,
     ) -> OpenResult<RecordsFileRepository> {
-        RecordsFileRepository::open(self.get_repository_path(&user_id), passwd)
+        OpenRecordsFileRepository(self.get_repository_path(&user_id)).open(passwd)
     }
-    pub fn initialize_user_repository(
+    fn initialize_user_repository(
         &self,
         user_id: UserId,
         passwd: EncryptionKey,
@@ -43,10 +45,10 @@ impl RepositoriesFactory {
 
 #[cfg(test)]
 mod tests {
-    use sec_store::{file_repository::RepositoryOpenError, repository::RecordsRepository};
+    use sec_store::repository::{RecordsRepository, RepositoryOpenError};
     use tempdir::TempDir;
 
-    use super::RepositoriesFactory;
+    use crate::user_repo_factory::{file::FileRepositoriesFactory, RepositoriesFactory};
 
     #[test]
     fn test_repo_not_exist() {
@@ -55,12 +57,10 @@ mod tests {
         let user_id = "user_id";
         let passwd = "123";
 
-        let factory = RepositoriesFactory(tmp_dir.into_path());
+        let factory = FileRepositoriesFactory(tmp_dir.into_path());
 
         assert!(!factory.user_has_repository(user_id));
-        let result = factory.get_user_repository(user_id, passwd).unwrap_err();
-
-        assert_eq!(result, RepositoryOpenError::FileAccessError);
+        assert!(factory.get_user_repository(user_id, passwd).is_err());
     }
 
     #[test]
@@ -70,7 +70,7 @@ mod tests {
         let user_id = "user_id";
         let passwd = "123";
 
-        let factory = RepositoriesFactory(tmp_dir.into_path());
+        let factory = FileRepositoriesFactory(tmp_dir.into_path());
 
         let repo = factory.initialize_user_repository(user_id, passwd).unwrap();
         repo.save().unwrap();
@@ -88,7 +88,7 @@ mod tests {
         let user_id = "user_id";
         let passwd = "123";
 
-        let factory = RepositoriesFactory(tmp_dir.into_path());
+        let factory = FileRepositoriesFactory(tmp_dir.into_path());
 
         factory
             .initialize_user_repository(user_id, passwd)

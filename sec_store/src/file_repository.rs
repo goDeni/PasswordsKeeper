@@ -26,7 +26,7 @@ pub struct RecordsFileRepository {
     passwd: EncryptionKey,
     records: RecordsMap,
 }
-pub struct OpenRecordsFileRepository(PathBuf);
+pub struct OpenRecordsFileRepository(pub PathBuf);
 
 #[derive(Serialize, Deserialize)]
 struct RawRepositoryJson(EncryptedData, Vec<EncryptedRecord>);

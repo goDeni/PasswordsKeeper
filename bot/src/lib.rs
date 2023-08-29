@@ -1,3 +1,3 @@
 #![allow(dead_code)]
 
-mod users;
+mod user_repo_factory;

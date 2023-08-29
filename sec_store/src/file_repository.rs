@@ -137,7 +137,7 @@ mod tests {
 
     use crate::{
         record::Record,
-        repository::{RecordDoesntExist, RepositoryOpenError},
+        file_repository::{RecordDoesntExist, RepositoryOpenError},
     };
 
     use super::RecordsRepository;

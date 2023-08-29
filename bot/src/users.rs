@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use sec_store::{
     cipher::EncryptionKey,
-    repository::{OpenResult, RecordsRepository},
+    file_repository::{OpenResult, RecordsRepository},
 };
 
 type UserId = &'static str;
@@ -43,7 +43,7 @@ impl RepositoriesFactory {
 
 #[cfg(test)]
 mod tests {
-    use sec_store::repository::RepositoryOpenError;
+    use sec_store::file_repository::RepositoryOpenError;
     use tempdir::TempDir;
 
     use super::RepositoriesFactory;

@@ -1,9 +1,5 @@
-dist
-*.pyc
-.pytest_cache
-.venv
-__pycache__
-.vscode
-.env
+.DS_Store
 .passwords_keeper_bot_data
-poetry.lock
+.vscode
+target/
+Cargo.lock

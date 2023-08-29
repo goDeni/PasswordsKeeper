@@ -1,4 +1,7 @@
-use crate::record::{Record, RecordId};
+use crate::{
+    cipher::EncryptionKey,
+    record::{Record, RecordId},
+};
 use anyhow::Result;
 use std::result::Result as StdResult;
 
@@ -10,6 +13,14 @@ pub type UpdateResult<T> = StdResult<T, RecordDoesntExist>;
 pub struct RecordAlreadyExist;
 pub type AddResult<T> = StdResult<T, RecordAlreadyExist>;
 
+pub type OpenResult<T> = Result<T, RepositoryOpenError>;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RepositoryOpenError {
+    WrongPassword,
+    UnexpectedError,
+}
+
 pub trait RecordsRepository {
     fn save(&self) -> Result<()>;
     fn get_records(&self) -> Vec<&Record>;
@@ -17,4 +28,11 @@ pub trait RecordsRepository {
     fn update(&mut self, record: Record) -> UpdateResult<()>;
     fn delete(&mut self, record_id: &RecordId) -> UpdateResult<()>;
     fn add_record(&mut self, record: Record) -> AddResult<()>;
+}
+
+pub trait OpenRepository<T>
+where
+    T: RecordsRepository,
+{
+    fn open(self, passwd: EncryptionKey) -> OpenResult<T>;
 }

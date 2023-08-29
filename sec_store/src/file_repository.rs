@@ -7,22 +7,14 @@ use uuid::Uuid;
 use crate::cipher::{decrypt_string, encrypt_string, EncryptedData, EncryptionError};
 use crate::record::EncryptedRecord;
 use crate::repository::{
-    AddResult, RecordAlreadyExist, RecordDoesntExist, RecordsRepository, UpdateResult,
+    AddResult, OpenRepository, OpenResult, RecordAlreadyExist, RecordDoesntExist,
+    RecordsRepository, RepositoryOpenError, UpdateResult,
 };
 use crate::{
     cipher::EncryptionKey,
     record::{Record, RecordId},
 };
 use serde::{Deserialize, Serialize};
-
-pub type OpenResult<T> = std::result::Result<T, RepositoryOpenError>;
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum RepositoryOpenError {
-    WrongPassword,
-    FileAccessError,
-    UnexpectedError,
-}
 
 type RepositoryId = String;
 type RecordsMap = HashMap<RecordId, Record>;
@@ -34,6 +26,7 @@ pub struct RecordsFileRepository {
     passwd: EncryptionKey,
     records: RecordsMap,
 }
+pub struct OpenRecordsFileRepository(PathBuf);
 
 #[derive(Serialize, Deserialize)]
 struct RawRepositoryJson(EncryptedData, Vec<EncryptedRecord>);
@@ -47,10 +40,12 @@ impl RecordsFileRepository {
             identifier: Uuid::new_v4().to_string(),
         }
     }
+}
 
-    pub fn open(path: PathBuf, passwd: EncryptionKey) -> OpenResult<RecordsFileRepository> {
-        match File::open(path.clone()) {
-            Err(_) => Err(RepositoryOpenError::FileAccessError),
+impl OpenRepository<RecordsFileRepository> for OpenRecordsFileRepository {
+    fn open(self, passwd: EncryptionKey) -> OpenResult<RecordsFileRepository> {
+        match File::open(self.0.clone()) {
+            Err(_) => Err(RepositoryOpenError::UnexpectedError),
             Ok(file) => {
                 let raw_rep = serde_json::from_reader::<File, RawRepositoryJson>(file).unwrap();
 
@@ -60,7 +55,7 @@ impl RecordsFileRepository {
                         Err(RepositoryOpenError::UnexpectedError)
                     }
                     Ok(identifier) => Ok(RecordsFileRepository {
-                        file: path.clone(),
+                        file: self.0,
                         identifier: identifier,
                         passwd: passwd,
                         records: HashMap::from_iter(
@@ -135,9 +130,9 @@ mod tests {
     use tempdir::TempDir;
 
     use crate::{
-        file_repository::{RecordDoesntExist, RepositoryOpenError},
+        file_repository::{OpenRecordsFileRepository, RecordDoesntExist, RepositoryOpenError},
         record::Record,
-        repository::RecordsRepository,
+        repository::{OpenRepository, RecordsRepository},
     };
 
     use super::RecordsFileRepository;
@@ -180,7 +175,9 @@ mod tests {
         repo.add_record(record).unwrap();
         repo.save().unwrap();
 
-        let new_repo = RecordsFileRepository::open(file.clone(), passwd).unwrap();
+        let new_repo = OpenRecordsFileRepository(file.clone())
+            .open(passwd)
+            .unwrap();
 
         assert_eq!(new_repo.get_records(), repo.get_records());
         assert_eq!(new_repo.identifier, repo.identifier);
@@ -254,7 +251,9 @@ mod tests {
         let repo = RecordsFileRepository::new(tmp_dir.path().join("repo_file"), "One password");
         repo.save().unwrap();
 
-        let result = RecordsFileRepository::open(repo.file, "Wrong passwd").unwrap_err();
+        let result = OpenRecordsFileRepository(repo.file)
+            .open("Wrong passwd")
+            .unwrap_err();
         assert_eq!(result, RepositoryOpenError::WrongPassword);
 
         tmp_dir.close().unwrap();
@@ -263,10 +262,11 @@ mod tests {
     #[test]
     fn test_repository_open_missed_file() {
         let tmp_dir = TempDir::new("test_").unwrap();
-        let result = RecordsFileRepository::open(tmp_dir.path().join("any_file"), "Wrong passwd")
+        let result = OpenRecordsFileRepository(tmp_dir.path().join("any_file"))
+            .open("Wrong passwd")
             .unwrap_err();
 
-        assert_eq!(result, RepositoryOpenError::FileAccessError);
+        assert_eq!(result, RepositoryOpenError::UnexpectedError);
 
         tmp_dir.close().unwrap();
     }

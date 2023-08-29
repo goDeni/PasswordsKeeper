@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use sec_store::{
     cipher::EncryptionKey,
-    file_repository::{OpenResult, RecordsRepository},
+    file_repository::{OpenResult, RecordsFileRepository},
 };
 
 type UserId = &'static str;
@@ -23,17 +23,17 @@ impl RepositoriesFactory {
         &self,
         user_id: UserId,
         passwd: EncryptionKey,
-    ) -> OpenResult<RecordsRepository> {
-        RecordsRepository::open(self.get_repository_path(&user_id), passwd)
+    ) -> OpenResult<RecordsFileRepository> {
+        RecordsFileRepository::open(self.get_repository_path(&user_id), passwd)
     }
     pub fn initialize_user_repository(
         &self,
         user_id: UserId,
         passwd: EncryptionKey,
-    ) -> InitRepoResult<RecordsRepository> {
+    ) -> InitRepoResult<RecordsFileRepository> {
         match self.user_has_repository(&user_id) {
             true => Err(RepositoryAlreadyExist),
-            false => Ok(RecordsRepository::new(
+            false => Ok(RecordsFileRepository::new(
                 self.get_repository_path(user_id),
                 passwd,
             )),
@@ -43,7 +43,7 @@ impl RepositoriesFactory {
 
 #[cfg(test)]
 mod tests {
-    use sec_store::file_repository::RepositoryOpenError;
+    use sec_store::{file_repository::RepositoryOpenError, repository::RecordsRepository};
     use tempdir::TempDir;
 
     use super::RepositoriesFactory;

@@ -1,3 +1,5 @@
+pub mod file;
+
 use crate::{
     cipher::EncryptionKey,
     record::{Record, RecordId},

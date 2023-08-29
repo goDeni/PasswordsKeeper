@@ -130,8 +130,8 @@ mod tests {
     use tempdir::TempDir;
 
     use crate::{
-        file_repository::{OpenRecordsFileRepository, RecordDoesntExist, RepositoryOpenError},
         record::Record,
+        repository::file::{OpenRecordsFileRepository, RecordDoesntExist, RepositoryOpenError},
         repository::{OpenRepository, RecordsRepository},
     };
 

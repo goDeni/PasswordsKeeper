@@ -64,8 +64,6 @@ impl RespsitoriesStore {
 
 #[cfg(test)]
 mod tests {
-    use std::{ops::Deref, sync::Arc};
-
     use sec_store::record::Record;
     use tempdir::TempDir;
 

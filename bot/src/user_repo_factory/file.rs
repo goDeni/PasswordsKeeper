@@ -51,7 +51,7 @@ impl RepositoriesFactory for FileRepositoriesFactory {
 
 #[cfg(test)]
 mod tests {
-    use sec_store::repository::{RecordsRepository, RepositoryOpenError};
+    use sec_store::repository::RepositoryOpenError;
     use tempdir::TempDir;
 
     use crate::user_repo_factory::{file::FileRepositoriesFactory, RepositoriesFactory};

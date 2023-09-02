@@ -2,10 +2,18 @@ use serde::{Deserialize, Serialize};
 
 use uuid::Uuid;
 
-use crate::cipher::{decrypt_string, encrypt_string, EncryptedData, EncryptionKey, Result};
+use crate::cipher::{decrypt_string, encrypt_string, DecryptResult, EncryptedData, EncryptionKey};
 
 pub type RecordId = String;
-pub type RecordField = (String, String);
+
+pub type FieldName = String;
+pub type FieldValue = String;
+pub type RecordField = (FieldName, FieldValue);
+
+pub type UpdateFieldResult<T> = anyhow::Result<T, FieldDoesntExist>;
+#[derive(Debug, Clone, PartialEq)]
+pub struct FieldDoesntExist;
+
 pub type EncryptedRecord = String;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -22,6 +30,35 @@ impl Record {
         }
     }
 
+    pub fn add_field(&mut self, field_name: FieldName, field_value: FieldValue) -> &mut Self {
+        self.fields.push((field_name, field_value));
+        self
+    }
+
+    pub fn get_fields(&self) -> Vec<(&FieldName, &FieldValue)> {
+        self.fields.iter().map(|(a, b)| (a, b)).collect()
+    }
+
+    pub fn update_field(
+        &mut self,
+        field_name: FieldName,
+        field_value: FieldValue,
+    ) -> UpdateFieldResult<()> {
+        match self
+            .fields
+            .iter()
+            .enumerate()
+            .find(|(_, (name, _))| field_name.eq(name))
+            .map(|(pos, _)| pos)
+        {
+            Some(idx) => {
+                self.fields[idx] = (field_name, field_value);
+                anyhow::Result::Ok(())
+            }
+            None => Err(FieldDoesntExist),
+        }
+    }
+
     pub fn encrypt(&self, passwd: EncryptionKey) -> EncryptedRecord {
         serde_json::to_string(&encrypt_string(
             passwd,
@@ -30,7 +67,10 @@ impl Record {
         .unwrap()
     }
 
-    pub fn decrypt(passwd: EncryptionKey, encrypted_record: &EncryptedRecord) -> Result<Record> {
+    pub fn decrypt(
+        passwd: EncryptionKey,
+        encrypted_record: &EncryptedRecord,
+    ) -> DecryptResult<Record> {
         Ok(serde_json::from_str::<Record>(&decrypt_string(
             passwd,
             serde_json::from_str::<EncryptedData>(encrypted_record).unwrap(),
@@ -66,7 +106,7 @@ mod tests {
         let result =
             super::Record::decrypt("Second", &super::Record::new(fields.clone()).encrypt("One"));
 
-        let expected = crate::cipher::EncryptionError::WrongPassword;
+        let expected = crate::cipher::DecryptionError::WrongPassword;
         assert_eq!(result, Err(expected));
     }
 }

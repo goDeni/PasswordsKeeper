@@ -4,7 +4,7 @@ use std::{collections::HashMap, path::PathBuf};
 use anyhow::{Context, Result};
 use uuid::Uuid;
 
-use crate::cipher::{decrypt_string, encrypt_string, EncryptedData, EncryptionError};
+use crate::cipher::{decrypt_string, encrypt_string, EncryptedData, DecryptionError};
 use crate::record::EncryptedRecord;
 use crate::repository::{
     AddResult, OpenRepository, OpenResult, RecordAlreadyExist, RecordDoesntExist,
@@ -50,8 +50,8 @@ impl OpenRepository<RecordsFileRepository> for OpenRecordsFileRepository {
                 let raw_rep = serde_json::from_reader::<File, RawRepositoryJson>(file).unwrap();
 
                 match decrypt_string(passwd, raw_rep.0) {
-                    Err(EncryptionError::WrongPassword) => Err(RepositoryOpenError::WrongPassword),
-                    Err(EncryptionError::UnexpectedError) => {
+                    Err(DecryptionError::WrongPassword) => Err(RepositoryOpenError::WrongPassword),
+                    Err(DecryptionError::UnexpectedError) => {
                         Err(RepositoryOpenError::UnexpectedError)
                     }
                     Ok(identifier) => Ok(RecordsFileRepository {

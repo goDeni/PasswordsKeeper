@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 type _Aes128Ctr64LE = ctr::Ctr64LE<aes::Aes256>;
 
 pub type EncryptionKey = &'static str;
-pub type Result<T> = std::result::Result<T, EncryptionError>;
+pub type DecryptResult<T> = std::result::Result<T, DecryptionError>;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum EncryptionError {
+pub enum DecryptionError {
     WrongPassword,
     UnexpectedError,
 }
@@ -36,16 +36,16 @@ pub fn encrypt_string(passwd: EncryptionKey, string: String) -> EncryptedData {
     encrypted_data
 }
 
-pub fn decrypt_string(passwd: EncryptionKey, mut encrypted_data: EncryptedData) -> Result<String> {
+pub fn decrypt_string(passwd: EncryptionKey, mut encrypted_data: EncryptedData) -> DecryptResult<String> {
     let key = digest::digest(&digest::SHA256, passwd.as_bytes());
     let mut cipher = _Aes128Ctr64LE::new(key.as_ref().into(), &encrypted_data.nonce.into());
 
     cipher.apply_keystream(&mut encrypted_data.data);
     if md5::compute(encrypted_data.data.clone()).to_vec() != encrypted_data.hash {
-        return Err(EncryptionError::WrongPassword);
+        return Err(DecryptionError::WrongPassword);
     }
 
-    String::from_utf8(encrypted_data.data).map_err(|_error| EncryptionError::UnexpectedError)
+    String::from_utf8(encrypted_data.data).map_err(|_error| DecryptionError::UnexpectedError)
 }
 
 #[test]
@@ -77,7 +77,7 @@ fn test_encryption_acces_with_wrong_passwd() {
         "Second password!",
         encrypt_string("First password!", String::from("Some string")),
     );
-    let expected = EncryptionError::WrongPassword;
+    let expected = DecryptionError::WrongPassword;
 
     assert_eq!(result, Err(expected));
 }

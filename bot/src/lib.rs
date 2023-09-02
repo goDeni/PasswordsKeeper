@@ -1,4 +1,5 @@
 #![allow(dead_code)]
 
-mod reps_store;
-mod user_repo_factory;
+pub mod dialogues;
+pub mod reps_store;
+pub mod user_repo_factory;

@@ -2,17 +2,8 @@ extern crate sec_store;
 
 use std::path::Path;
 
-use teloxide::{dispatching::dialogue::InMemStorage, prelude::*, types::Update};
-
-type HandlerResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
-type MyDialogue = Dialogue<State, InMemStorage<State>>;
-#[derive(Clone, Default)]
-pub enum State {
-    #[default]
-    FirstState,
-    SecondState,
-    ThirdState,
-}
+use bot::dialogues::{build_handler, State};
+use teloxide::{dispatching::dialogue::InMemStorage, prelude::*};
 
 #[tokio::main]
 async fn main() {
@@ -29,13 +20,7 @@ async fn main() {
     log::info!("Starting bot...");
     let bot = Bot::from_env();
 
-    let handler = Update::filter_message()
-        .enter_dialogue::<Message, InMemStorage<State>, State>()
-        .branch(dptree::case![State::FirstState].endpoint(first_state))
-        .branch(dptree::case![State::SecondState].endpoint(second_state))
-        .branch(dptree::case![State::ThirdState].endpoint(third_state));
-
-    Dispatcher::builder(bot, handler)
+    Dispatcher::builder(bot, build_handler())
         .dependencies(dptree::deps![InMemStorage::<State>::new()])
         .default_handler(|upd| async move {
             log::warn!("Unhandled update: {:?}", upd);
@@ -47,37 +32,4 @@ async fn main() {
         .build()
         .dispatch()
         .await;
-}
-
-async fn first_state(
-    bot: Bot,
-    me: teloxide::types::Me,
-    dialogue: MyDialogue,
-    msg: Message,
-) -> HandlerResult {
-    bot.send_message(msg.chat.id, "first_state").await?;
-    dialogue.update(State::SecondState).await?;
-    Ok(())
-}
-
-async fn second_state(
-    bot: Bot,
-    me: teloxide::types::Me,
-    dialogue: MyDialogue,
-    msg: Message,
-) -> HandlerResult {
-    bot.send_message(msg.chat.id, "second_state").await?;
-    dialogue.update(State::ThirdState).await?;
-    Ok(())
-}
-
-async fn third_state(
-    bot: Bot,
-    me: teloxide::types::Me,
-    dialogue: MyDialogue,
-    msg: Message,
-) -> HandlerResult {
-    bot.send_message(msg.chat.id, "third_state").await?;
-    dialogue.update(State::FirstState).await?;
-    Ok(())
 }

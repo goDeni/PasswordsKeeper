@@ -20,7 +20,7 @@ type Repo = Arc<Mutex<Box<dyn RecordsRepository>>>;
 impl RespsitoriesStore {
     pub fn new(factory: Box<dyn RepositoriesFactory>) -> RespsitoriesStore {
         RespsitoriesStore {
-            factory: factory,
+            factory,
             repos: HashMap::new(),
         }
     }

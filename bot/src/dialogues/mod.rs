@@ -6,12 +6,12 @@ use teloxide::{
     dispatching::{dialogue::InMemStorage, DpHandlerDescription, HandlerExt, UpdateFilterExt},
     dptree,
     prelude::{DependencyMap, Dialogue, Handler},
-    types::{Message, Update},
+    types::{CallbackQuery, Message, Update},
 };
 
-use self::welcome::{first_state, second_state, third_state};
+use self::welcome::{callback_handler, first_state, second_state, third_state};
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub enum State {
     #[default]
     FirstState,
@@ -25,9 +25,17 @@ pub type MyDialogue = Dialogue<State, InMemStorage<State>>;
 pub fn build_handler(
 ) -> Handler<'static, DependencyMap, Result<(), Box<dyn Error + Send + Sync>>, DpHandlerDescription>
 {
-    Update::filter_message()
+    let messages_hanler = Update::filter_message()
         .enter_dialogue::<Message, InMemStorage<State>, State>()
         .branch(dptree::case![State::FirstState].endpoint(first_state))
         .branch(dptree::case![State::SecondState].endpoint(second_state))
-        .branch(dptree::case![State::ThirdState].endpoint(third_state))
+        .branch(dptree::case![State::ThirdState].endpoint(third_state));
+
+    let callbacks_hanlder = Update::filter_callback_query()
+        .enter_dialogue::<CallbackQuery, InMemStorage<State>, State>()
+        .endpoint(callback_handler);
+
+    dptree::entry()
+        .branch(messages_hanler)
+        .branch(callbacks_hanlder)
 }

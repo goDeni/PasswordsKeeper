@@ -44,6 +44,10 @@ impl RecordsFileRepository {
 
 impl OpenRepository<RecordsFileRepository> for OpenRecordsFileRepository {
     fn open(self, passwd: EncryptionKey) -> OpenResult<RecordsFileRepository> {
+        if !self.0.exists() {
+            return Err(RepositoryOpenError::DoesntExist);
+        }
+
         match File::open(self.0.clone()) {
             Err(_) => Err(RepositoryOpenError::UnexpectedError),
             Ok(file) => {

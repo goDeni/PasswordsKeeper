@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use sec_store::{
     cipher::EncryptionKey,
-    repository::file::{OpenRecordsFileRepository, RecordsFileRepository},
+    repository::{file::{OpenRecordsFileRepository, RecordsFileRepository}, RecordsRepository},
     repository::{OpenRepository, OpenResult},
 };
 
@@ -10,14 +10,14 @@ use crate::user_repo_factory::{InitRepoResult, RepositoriesFactory, RepositoryAl
 
 type UserId = &'static str;
 
-struct FileRepositoriesFactory(PathBuf);
+pub struct FileRepositoriesFactory(pub PathBuf);
 impl FileRepositoriesFactory {
     fn get_repository_path(&self, user_id: UserId) -> PathBuf {
         self.0.join(format!("rep_{}", user_id))
     }
 }
 
-impl RepositoriesFactory<RecordsFileRepository> for FileRepositoriesFactory {
+impl RepositoriesFactory for FileRepositoriesFactory {
     fn user_has_repository(&self, user_id: UserId) -> bool {
         self.get_repository_path(user_id).exists()
     }
@@ -25,20 +25,23 @@ impl RepositoriesFactory<RecordsFileRepository> for FileRepositoriesFactory {
         &self,
         user_id: UserId,
         passwd: EncryptionKey,
-    ) -> OpenResult<RecordsFileRepository> {
-        OpenRecordsFileRepository(self.get_repository_path(&user_id)).open(passwd)
+    ) -> OpenResult<Box<dyn RecordsRepository>> {
+        match OpenRecordsFileRepository(self.get_repository_path(&user_id)).open(passwd) {
+            Ok(rep) => Ok(Box::new(rep)),
+            Err(err) => Err(err),
+        }
     }
     fn initialize_user_repository(
         &self,
         user_id: UserId,
         passwd: EncryptionKey,
-    ) -> InitRepoResult<RecordsFileRepository> {
+    ) -> InitRepoResult<Box<dyn RecordsRepository>> {
         match self.user_has_repository(&user_id) {
             true => Err(RepositoryAlreadyExist),
-            false => Ok(RecordsFileRepository::new(
+            false => Ok(Box::new(RecordsFileRepository::new(
                 self.get_repository_path(user_id),
                 passwd,
-            )),
+            ))),
         }
     }
 }

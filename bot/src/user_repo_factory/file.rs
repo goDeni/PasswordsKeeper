@@ -2,7 +2,10 @@ use std::path::PathBuf;
 
 use sec_store::{
     cipher::EncryptionKey,
-    repository::{file::{OpenRecordsFileRepository, RecordsFileRepository}, RecordsRepository},
+    repository::{
+        file::{OpenRecordsFileRepository, RecordsFileRepository},
+        RecordsRepository,
+    },
     repository::{OpenRepository, OpenResult},
 };
 

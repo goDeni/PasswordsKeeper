@@ -18,10 +18,13 @@ pub enum GetReposityError {
 }
 
 pub type UserId = &'static str;
-pub trait RepositoriesFactory
-{
+pub trait RepositoriesFactory {
     fn user_has_repository(&self, user_id: UserId) -> bool;
-    fn get_user_repository(&self, user_id: UserId, passwd: EncryptionKey) -> OpenResult<Box<dyn RecordsRepository>>;
+    fn get_user_repository(
+        &self,
+        user_id: UserId,
+        passwd: EncryptionKey,
+    ) -> OpenResult<Box<dyn RecordsRepository>>;
     fn initialize_user_repository(
         &self,
         user_id: UserId,

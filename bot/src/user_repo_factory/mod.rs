@@ -17,17 +17,17 @@ pub enum GetReposityError {
     UnexpectedError,
 }
 
-pub type UserId = &'static str;
+pub type UserId = String;
 pub trait RepositoriesFactory {
-    fn user_has_repository(&self, user_id: UserId) -> bool;
+    fn user_has_repository(&self, user_id: &UserId) -> bool;
     fn get_user_repository(
         &self,
-        user_id: UserId,
+        user_id: &UserId,
         passwd: EncryptionKey,
     ) -> OpenResult<Box<dyn RecordsRepository>>;
     fn initialize_user_repository(
         &self,
-        user_id: UserId,
+        user_id: &UserId,
         passwd: EncryptionKey,
     ) -> InitRepoResult<Box<dyn RecordsRepository>>;
 }

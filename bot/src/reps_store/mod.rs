@@ -1,1 +1,1 @@
-mod store;
+pub mod store;

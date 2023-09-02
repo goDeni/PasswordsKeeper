@@ -203,9 +203,7 @@ mod tests {
         repo.add_record(old_record.clone()).unwrap();
 
         let mut new_record = repo.get(&old_record.id).unwrap().clone();
-        new_record
-            .fields
-            .push(("Field3".to_string(), "3".to_string()));
+        new_record.add_field("Field3".to_string(), "3".to_string()).unwrap();
 
         repo.update(new_record.clone()).unwrap();
 

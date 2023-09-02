@@ -14,12 +14,16 @@ pub type UpdateFieldResult<T> = anyhow::Result<T, FieldDoesntExist>;
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldDoesntExist;
 
+pub type AddFieldResult<T> = anyhow::Result<T, SameFieldAlreadyExist>;
+#[derive(Debug, Clone, PartialEq)]
+pub struct SameFieldAlreadyExist;
+
 pub type EncryptedRecord = String;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Record {
     pub id: RecordId,
-    pub fields: Vec<RecordField>,
+    fields: Vec<RecordField>,
 }
 
 impl Record {
@@ -30,9 +34,18 @@ impl Record {
         }
     }
 
-    pub fn add_field(&mut self, field_name: FieldName, field_value: FieldValue) -> &mut Self {
-        self.fields.push((field_name, field_value));
-        self
+    pub fn add_field(
+        &mut self,
+        field_name: FieldName,
+        field_value: FieldValue,
+    ) -> AddFieldResult<()> {
+        match self.fields.iter().find(|(name, _)| field_name.eq(name)) {
+            Some(_) => Err(SameFieldAlreadyExist),
+            None => {
+                self.fields.push((field_name, field_value));
+                Ok(())
+            }
+        }
     }
 
     pub fn get_fields(&self) -> Vec<(&FieldName, &FieldValue)> {
@@ -53,7 +66,7 @@ impl Record {
         {
             Some(idx) => {
                 self.fields[idx] = (field_name, field_value);
-                anyhow::Result::Ok(())
+                Ok(())
             }
             None => Err(FieldDoesntExist),
         }
@@ -81,6 +94,8 @@ impl Record {
 
 #[cfg(test)]
 mod tests {
+    use crate::record::Record;
+
     #[test]
     fn test_record_encryption() {
         let fields = vec![(String::from("First"), String::from("1"))];
@@ -109,4 +124,60 @@ mod tests {
         let expected = crate::cipher::DecryptionError::WrongPassword;
         assert_eq!(result, Err(expected));
     }
+
+    #[test]
+    fn test_field_add() {
+        let fields = vec![("Field1".to_string(), "Value1".to_string())];
+        let mut record = Record::new(fields);
+
+        record
+            .add_field("Field2".to_string(), "Value2".to_string())
+            .unwrap();
+
+        assert_eq!(
+            record.get_fields(),
+            vec![
+                (&"Field1".to_string(), &"Value1".to_string()),
+                (&"Field2".to_string(), &"Value2".to_string()),
+            ]
+        )
+    }
+
+    #[test]
+    fn test_field_add_err() {
+        let fields = vec![("Field1".to_string(), "Value1".to_string())];
+        let mut record = Record::new(fields);
+
+        let result = record.add_field("Field1".to_string(), "Value2".to_string());
+        assert_eq!(result, Err(crate::record::SameFieldAlreadyExist));
+    }
+
+    #[test]
+    fn test_field_update() {
+        let fields = vec![("Field1".to_string(), "Value1".to_string())];
+        let mut record = Record::new(fields);
+
+        record
+            .update_field("Field1".to_string(), "Value2".to_string())
+            .unwrap();
+
+        assert_eq!(
+            record.get_fields(),
+            vec![
+                (&"Field1".to_string(), &"Value2".to_string()),
+            ]
+        )
+    }
+
+    #[test]
+    fn test_field_update_err() {
+        let fields = vec![("Field1".to_string(), "Value1".to_string())];
+        let mut record = Record::new(fields);
+
+        let result = record
+            .update_field("Field2".to_string(), "Value2".to_string());
+
+        assert_eq!(result, Err(crate::record::FieldDoesntExist));
+    }
+
 }

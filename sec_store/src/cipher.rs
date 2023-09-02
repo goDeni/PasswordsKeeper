@@ -2,11 +2,12 @@ use aes::cipher::{KeyIvInit, StreamCipher};
 use rand::Rng;
 use ring::digest;
 use serde::{Deserialize, Serialize};
+use anyhow::Result;
 
 type _Aes128Ctr64LE = ctr::Ctr64LE<aes::Aes256>;
 
 pub type EncryptionKey = &'static str;
-pub type DecryptResult<T> = std::result::Result<T, DecryptionError>;
+pub type DecryptResult<T> = Result<T, DecryptionError>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DecryptionError {

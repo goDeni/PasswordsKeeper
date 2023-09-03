@@ -1,75 +1,61 @@
 use std::sync::Arc;
 
 use teloxide::{
+    dispatching::dialogue::GetChatId,
     payloads::SendMessageSetters,
     requests::Requester,
-    types::{CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message},
+    types::{CallbackQuery, Message},
     Bot,
 };
 
-use super::{HandlerResult, MyDialogue, State, BotContext};
+use super::{create_repo::make_create_repo_keyboard, BotContext, HandlerResult, MyDialogue, State};
 
-pub async fn first_state(
+pub async fn main_state_handler(
     bot: Bot,
     dialogue: MyDialogue,
     msg: Message,
     context: Arc<BotContext>,
 ) -> HandlerResult {
-    let keyboard = make_keyboard();
-    bot.send_message(msg.chat.id, "first_state")
-        .reply_markup(keyboard)
-        .await?;
-    dialogue.update(State::SecondState).await?;
-    Ok(())
-}
+    match context.store.exist(&msg.from().unwrap().id) {
+        true => {
+            unimplemented!()
+        }
+        false => {
+            bot.send_message(msg.chat.id, "Репозиторий отсутствует")
+                .reply_markup(make_create_repo_keyboard())
+                .await?;
 
-pub async fn second_state(bot: Bot, dialogue: MyDialogue, msg: Message) -> HandlerResult {
-    let keyboard = make_keyboard();
-    bot.send_message(msg.chat.id, "second_state")
-        .reply_markup(keyboard)
-        .await?;
-    dialogue.update(State::ThirdState).await?;
-    Ok(())
-}
-
-pub async fn third_state(bot: Bot, dialogue: MyDialogue, msg: Message) -> HandlerResult {
-    bot.send_message(msg.chat.id, "third_state").await?;
-    dialogue.update(State::FirstState).await?;
-    Ok(())
-}
-
-fn make_keyboard() -> InlineKeyboardMarkup {
-    let mut keyboard: Vec<Vec<InlineKeyboardButton>> = vec![];
-
-    let buttons = ["First", "Second"];
-
-    for versions in buttons.chunks(3) {
-        let row = versions
-            .iter()
-            .map(|&version| InlineKeyboardButton::callback(version.to_owned(), version.to_owned()))
-            .collect();
-
-        keyboard.push(row);
+            dialogue.update(State::CreateRepoState).await?;
+        }
     }
 
-    InlineKeyboardMarkup::new(keyboard)
+    Ok(())
 }
 
-pub async fn callback_handler(bot: Bot, dialogue: MyDialogue, q: CallbackQuery) -> HandlerResult {
-    if let Some(version) = q.data {
-        let state = dialogue.get().await?;
-        log::info!("state: {:?}", state);
+pub async fn default_message_handler(bot: Bot, msg: Message) -> HandlerResult {
+    log::debug!(
+        "Defalt message handler called. chat_id: {}; from: {:?}",
+        msg.chat.id,
+        msg.from().map(|msg_from| msg_from.id)
+    );
 
-        let text = format!("You chose: {version}. State: {:?}", state);
-        bot.answer_callback_query(q.id).await?;
+    bot.delete_message(msg.chat.id, msg.id).await?;
+    Ok(())
+}
 
-        if let Some(Message { id, chat, .. }) = q.message {
-            bot.edit_message_text(chat.id, id, text).await?;
-        } else if let Some(id) = q.inline_message_id {
-            bot.edit_message_text_inline(id, text).await?;
+pub async fn default_callback_handler(bot: Bot, query: CallbackQuery) -> HandlerResult {
+    log::debug!(
+        "Defalt callback handler called. chat_id: {:?}; from: {:?}",
+        query.chat_id(),
+        query.from.id
+    );
+
+    bot.answer_callback_query(query.id).await?;
+    match query.message {
+        Some(msg) => {
+            bot.delete_message(msg.chat.id, msg.id).await?;
         }
-
-        log::info!("You chose: {}", version);
+        None => {}
     }
 
     Ok(())

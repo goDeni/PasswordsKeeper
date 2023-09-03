@@ -1,4 +1,5 @@
 mod welcome;
+mod create_repo;
 
 use std::error::Error;
 
@@ -14,13 +15,13 @@ use crate::{
     reps_store::store::RepositoriesStore, user_repo_factory::file::FileRepositoriesFactory,
 };
 
-use self::welcome::{callback_handler, first_state, second_state, third_state};
+use self::{welcome::{default_callback_handler, main_state_handler, default_message_handler}, create_repo::create_repo_callback};
 
 #[derive(Clone, Default, Debug)]
 pub enum State {
     #[default]
-    FirstState,
-    SecondState,
+    MainState,
+    CreateRepoState,
     ThirdState,
 }
 
@@ -36,13 +37,13 @@ pub fn build_handler(
 {
     let messages_hanler = Update::filter_message()
         .enter_dialogue::<Message, InMemStorage<State>, State>()
-        .branch(dptree::case![State::FirstState].endpoint(first_state))
-        .branch(dptree::case![State::SecondState].endpoint(second_state))
-        .branch(dptree::case![State::ThirdState].endpoint(third_state));
+        .branch(dptree::case![State::MainState].endpoint(main_state_handler))
+        .endpoint(default_message_handler);
 
     let callbacks_hanlder = Update::filter_callback_query()
         .enter_dialogue::<CallbackQuery, InMemStorage<State>, State>()
-        .endpoint(callback_handler);
+        .branch(dptree::case![State::CreateRepoState].endpoint(create_repo_callback))
+        .endpoint(default_callback_handler);
 
     dptree::entry()
         .branch(messages_hanler)

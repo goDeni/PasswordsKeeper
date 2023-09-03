@@ -5,12 +5,13 @@ use sec_store::{
     cipher::EncryptionKey,
     repository::{OpenResult, RecordsRepository},
 };
+use teloxide::types::UserId;
 
 use crate::user_repo_factory::{InitRepoResult, RepositoriesFactory};
 
 pub struct RepositoriesStore<T, R> {
     factory: T,
-    repos: HashMap<String, Arc<Mutex<R>>>,
+    repos: HashMap<UserId, Arc<Mutex<R>>>,
 }
 
 impl<T, R> RepositoriesStore<T, R>
@@ -25,13 +26,13 @@ where
         }
     }
 
-    pub fn exist(&self, user_id: &String) -> bool {
-        self.factory.user_has_repository(user_id)
+    pub fn exist(&self, user_id: &UserId) -> bool {
+        self.factory.user_has_repository(&user_id.to_string())
     }
 
     pub fn init(
         &mut self,
-        user_id: &String,
+        user_id: &UserId,
         passwd: EncryptionKey,
     ) -> InitRepoResult<Arc<Mutex<R>>> {
         if !self.repos.contains_key(user_id) {
@@ -45,9 +46,9 @@ where
         Ok(self.get(user_id).unwrap())
     }
 
-    pub fn open(&mut self, user_id: &String, passwd: EncryptionKey) -> OpenResult<Arc<Mutex<R>>> {
+    pub fn open(&mut self, user_id: &UserId, passwd: EncryptionKey) -> OpenResult<Arc<Mutex<R>>> {
         if !self.repos.contains_key(user_id) {
-            let repo = self.factory.get_user_repository(user_id, passwd).unwrap();
+            let repo = self.factory.get_user_repository(&user_id.to_string(), passwd).unwrap();
             self.repos
                 .insert(user_id.clone(), Arc::new(Mutex::new(repo)));
         }
@@ -55,11 +56,11 @@ where
         Ok(self.get(user_id).unwrap())
     }
 
-    pub fn get(&self, user_id: &String) -> Option<Arc<Mutex<R>>> {
+    pub fn get(&self, user_id: &UserId) -> Option<Arc<Mutex<R>>> {
         self.repos.get(user_id).map(|rep| Arc::clone(rep))
     }
 
-    pub fn close(&mut self, user_id: &String) {
+    pub fn close(&mut self, user_id: &UserId) {
         self.repos.remove(user_id);
     }
 }

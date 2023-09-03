@@ -2,10 +2,7 @@ use std::path::PathBuf;
 
 use sec_store::{
     cipher::EncryptionKey,
-    repository::{
-        file::{OpenRecordsFileRepository, RecordsFileRepository},
-        RecordsRepository,
-    },
+    repository::file::{OpenRecordsFileRepository, RecordsFileRepository},
     repository::{OpenRepository, OpenResult},
 };
 
@@ -14,13 +11,14 @@ use crate::user_repo_factory::{InitRepoResult, RepositoriesFactory, RepositoryAl
 use super::UserId;
 
 pub struct FileRepositoriesFactory(pub PathBuf);
+
 impl FileRepositoriesFactory {
     fn get_repository_path(&self, user_id: &UserId) -> PathBuf {
         self.0.join(format!("rep_{}", user_id))
     }
 }
 
-impl RepositoriesFactory for FileRepositoriesFactory {
+impl RepositoriesFactory<RecordsFileRepository> for FileRepositoriesFactory {
     fn user_has_repository(&self, user_id: &UserId) -> bool {
         self.get_repository_path(user_id).exists()
     }
@@ -28,9 +26,9 @@ impl RepositoriesFactory for FileRepositoriesFactory {
         &self,
         user_id: &UserId,
         passwd: EncryptionKey,
-    ) -> OpenResult<Box<dyn RecordsRepository>> {
+    ) -> OpenResult<RecordsFileRepository> {
         match OpenRecordsFileRepository(self.get_repository_path(&user_id)).open(passwd) {
-            Ok(rep) => Ok(Box::new(rep)),
+            Ok(rep) => Ok(rep),
             Err(err) => Err(err),
         }
     }
@@ -38,20 +36,20 @@ impl RepositoriesFactory for FileRepositoriesFactory {
         &self,
         user_id: &UserId,
         passwd: EncryptionKey,
-    ) -> InitRepoResult<Box<dyn RecordsRepository>> {
+    ) -> InitRepoResult<RecordsFileRepository> {
         match self.user_has_repository(&user_id) {
             true => Err(RepositoryAlreadyExist),
-            false => Ok(Box::new(RecordsFileRepository::new(
+            false => Ok(RecordsFileRepository::new(
                 self.get_repository_path(user_id),
                 passwd,
-            ))),
+            )),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use sec_store::repository::RepositoryOpenError;
+    use sec_store::repository::{RecordsRepository, RepositoryOpenError};
     use tempdir::TempDir;
 
     use crate::user_repo_factory::{file::FileRepositoriesFactory, RepositoriesFactory};
@@ -78,7 +76,9 @@ mod tests {
 
         let factory = FileRepositoriesFactory(tmp_dir.into_path());
 
-        let repo = factory.initialize_user_repository(&user_id, passwd).unwrap();
+        let repo = factory
+            .initialize_user_repository(&user_id, passwd)
+            .unwrap();
         repo.save().unwrap();
 
         assert!(factory.user_has_repository(&user_id));

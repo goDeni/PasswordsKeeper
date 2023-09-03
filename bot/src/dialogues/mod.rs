@@ -2,11 +2,16 @@ mod welcome;
 
 use std::error::Error;
 
+use sec_store::repository::file::RecordsFileRepository;
 use teloxide::{
     dispatching::{dialogue::InMemStorage, DpHandlerDescription, HandlerExt, UpdateFilterExt},
     dptree,
     prelude::{DependencyMap, Dialogue, Handler},
     types::{CallbackQuery, Message, Update},
+};
+
+use crate::{
+    reps_store::store::RepositoriesStore, user_repo_factory::file::FileRepositoriesFactory,
 };
 
 use self::welcome::{callback_handler, first_state, second_state, third_state};
@@ -17,6 +22,10 @@ pub enum State {
     FirstState,
     SecondState,
     ThirdState,
+}
+
+pub struct BotContext {
+    pub store: RepositoriesStore<FileRepositoriesFactory, RecordsFileRepository>,
 }
 
 pub type HandlerResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;

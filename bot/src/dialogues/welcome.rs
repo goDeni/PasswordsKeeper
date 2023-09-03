@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use teloxide::{
     payloads::SendMessageSetters,
     requests::Requester,
@@ -5,9 +7,14 @@ use teloxide::{
     Bot,
 };
 
-use super::{HandlerResult, MyDialogue, State};
+use super::{HandlerResult, MyDialogue, State, BotContext};
 
-pub async fn first_state(bot: Bot, dialogue: MyDialogue, msg: Message) -> HandlerResult {
+pub async fn first_state(
+    bot: Bot,
+    dialogue: MyDialogue,
+    msg: Message,
+    context: Arc<BotContext>,
+) -> HandlerResult {
     let keyboard = make_keyboard();
     bot.send_message(msg.chat.id, "first_state")
         .reply_markup(keyboard)

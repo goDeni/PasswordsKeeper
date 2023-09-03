@@ -8,18 +8,18 @@ use sec_store::{
 
 use crate::user_repo_factory::{InitRepoResult, RepositoriesFactory};
 
-pub struct RespsitoriesStore<T, R> {
+pub struct RepositoriesStore<T, R> {
     factory: T,
     repos: HashMap<String, Arc<Mutex<R>>>,
 }
 
-impl<T, R> RespsitoriesStore<T, R>
+impl<T, R> RepositoriesStore<T, R>
 where
     T: RepositoriesFactory<R>,
     R: RecordsRepository,
 {
     pub fn new(factory: T) -> Self {
-        RespsitoriesStore {
+        RepositoriesStore {
             factory,
             repos: HashMap::new(),
         }
@@ -71,7 +71,7 @@ mod tests {
 
     use crate::user_repo_factory::file::FileRepositoriesFactory;
 
-    use super::RespsitoriesStore;
+    use super::RepositoriesStore;
 
     #[tokio::test]
     async fn test_store_init_and_get_repo() {
@@ -79,7 +79,7 @@ mod tests {
         let user_id = "123".to_string();
         let passwd = "passwd";
 
-        let mut store = RespsitoriesStore::new(FileRepositoriesFactory(tmp_dir.into_path()));
+        let mut store = RepositoriesStore::new(FileRepositoriesFactory(tmp_dir.into_path()));
 
         let repo_lock = store.init_repo(&user_id, passwd).unwrap();
         let mut repo = repo_lock.lock().await;
@@ -115,7 +115,7 @@ mod tests {
         let user_id = "123".to_string();
         let passwd = "passwd";
 
-        let mut store = RespsitoriesStore::new(FileRepositoriesFactory(tmp_dir.into_path()));
+        let mut store = RepositoriesStore::new(FileRepositoriesFactory(tmp_dir.into_path()));
 
         store.init_repo(&user_id, passwd).unwrap();
         store.close_repo(&user_id);
@@ -129,7 +129,7 @@ mod tests {
         let user_id = "123".to_string();
         let passwd = "passwd";
 
-        let mut store = RespsitoriesStore::new(FileRepositoriesFactory(tmp_dir.into_path()));
+        let mut store = RepositoriesStore::new(FileRepositoriesFactory(tmp_dir.into_path()));
 
         let repo_lock = store.init_repo(&user_id, passwd).unwrap();
         let mut repo = repo_lock.lock().await;

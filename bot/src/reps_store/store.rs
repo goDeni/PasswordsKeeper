@@ -25,7 +25,11 @@ where
         }
     }
 
-    pub fn init_repo(
+    pub fn exist(&self, user_id: &String) -> bool {
+        self.factory.user_has_repository(user_id)
+    }
+
+    pub fn init(
         &mut self,
         user_id: &String,
         passwd: EncryptionKey,
@@ -38,28 +42,24 @@ where
                 .insert(user_id.clone(), Arc::new(Mutex::new(repo)));
         }
 
-        Ok(self.get_repo(user_id).unwrap())
+        Ok(self.get(user_id).unwrap())
     }
 
-    pub fn open_repo(
-        &mut self,
-        user_id: &String,
-        passwd: EncryptionKey,
-    ) -> OpenResult<Arc<Mutex<R>>> {
+    pub fn open(&mut self, user_id: &String, passwd: EncryptionKey) -> OpenResult<Arc<Mutex<R>>> {
         if !self.repos.contains_key(user_id) {
             let repo = self.factory.get_user_repository(user_id, passwd).unwrap();
             self.repos
                 .insert(user_id.clone(), Arc::new(Mutex::new(repo)));
         }
 
-        Ok(self.get_repo(user_id).unwrap())
+        Ok(self.get(user_id).unwrap())
     }
 
-    pub fn get_repo(&self, user_id: &String) -> Option<Arc<Mutex<R>>> {
+    pub fn get(&self, user_id: &String) -> Option<Arc<Mutex<R>>> {
         self.repos.get(user_id).map(|rep| Arc::clone(rep))
     }
 
-    pub fn close_repo(&mut self, user_id: &String) {
+    pub fn close(&mut self, user_id: &String) {
         self.repos.remove(user_id);
     }
 }
@@ -81,7 +81,7 @@ mod tests {
 
         let mut store = RepositoriesStore::new(FileRepositoriesFactory(tmp_dir.into_path()));
 
-        let repo_lock = store.init_repo(&user_id, passwd).unwrap();
+        let repo_lock = store.init(&user_id, passwd).unwrap();
         let mut repo = repo_lock.lock().await;
 
         let fields = vec![("Field1".to_string(), "v1".to_string())];
@@ -96,7 +96,7 @@ mod tests {
         drop(repo);
         drop(repo_lock);
 
-        let repo_lock = store.get_repo(&user_id).unwrap();
+        let repo_lock = store.get(&user_id).unwrap();
         let repo = repo_lock.lock().await;
 
         assert!(repo.get_records().len() > 0);
@@ -117,10 +117,10 @@ mod tests {
 
         let mut store = RepositoriesStore::new(FileRepositoriesFactory(tmp_dir.into_path()));
 
-        store.init_repo(&user_id, passwd).unwrap();
-        store.close_repo(&user_id);
+        store.init(&user_id, passwd).unwrap();
+        store.close(&user_id);
 
-        assert!(store.get_repo(&user_id).is_none());
+        assert!(store.get(&user_id).is_none());
     }
 
     #[tokio::test]
@@ -131,7 +131,7 @@ mod tests {
 
         let mut store = RepositoriesStore::new(FileRepositoriesFactory(tmp_dir.into_path()));
 
-        let repo_lock = store.init_repo(&user_id, passwd).unwrap();
+        let repo_lock = store.init(&user_id, passwd).unwrap();
         let mut repo = repo_lock.lock().await;
 
         let fields = vec![("Field1".to_string(), "v1".to_string())];
@@ -148,9 +148,9 @@ mod tests {
         drop(repo);
         drop(repo_lock);
 
-        store.close_repo(&user_id);
+        store.close(&user_id);
 
-        let repo_lock = store.open_repo(&user_id, passwd).unwrap();
+        let repo_lock = store.open(&user_id, passwd).unwrap();
         let repo = repo_lock.lock().await;
 
         assert!(repo.get_records().len() > 0);

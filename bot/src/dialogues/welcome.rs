@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use async_mutex::Mutex;
 use teloxide::{
     dispatching::dialogue::GetChatId,
     payloads::SendMessageSetters,
@@ -14,9 +15,9 @@ pub async fn main_state_handler(
     bot: Bot,
     dialogue: MyDialogue,
     msg: Message,
-    context: Arc<BotContext>,
+    context: Arc<Mutex<BotContext>>,
 ) -> HandlerResult {
-    match context.store.exist(&msg.from().unwrap().id) {
+    match context.lock().await.store.exist(&msg.from().unwrap().id) {
         true => {
             unimplemented!()
         }

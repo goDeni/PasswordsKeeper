@@ -1,12 +1,12 @@
 use aes::cipher::{KeyIvInit, StreamCipher};
+use anyhow::Result;
 use rand::Rng;
 use ring::digest;
 use serde::{Deserialize, Serialize};
-use anyhow::Result;
 
 type _Aes128Ctr64LE = ctr::Ctr64LE<aes::Aes256>;
 
-pub type EncryptionKey = &'static str;
+pub type EncryptionKey = String;
 pub type DecryptResult<T> = Result<T, DecryptionError>;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -22,7 +22,7 @@ pub struct EncryptedData {
     hash: Vec<u8>,
 }
 
-pub fn encrypt_string(passwd: EncryptionKey, string: String) -> EncryptedData {
+pub fn encrypt_string(passwd: &EncryptionKey, string: String) -> EncryptedData {
     let key = digest::digest(&digest::SHA256, passwd.as_bytes());
 
     let mut encrypted_data = EncryptedData {
@@ -37,7 +37,10 @@ pub fn encrypt_string(passwd: EncryptionKey, string: String) -> EncryptedData {
     encrypted_data
 }
 
-pub fn decrypt_string(passwd: EncryptionKey, mut encrypted_data: EncryptedData) -> DecryptResult<String> {
+pub fn decrypt_string(
+    passwd: &EncryptionKey,
+    mut encrypted_data: EncryptedData,
+) -> DecryptResult<String> {
     let key = digest::digest(&digest::SHA256, passwd.as_bytes());
     let mut cipher = _Aes128Ctr64LE::new(key.as_ref().into(), &encrypted_data.nonce.into());
 
@@ -51,20 +54,20 @@ pub fn decrypt_string(passwd: EncryptionKey, mut encrypted_data: EncryptedData) 
 
 #[test]
 fn test_encryption() {
-    let passwd = "some password!";
+    let passwd = "some password!".to_string();
     let plaintext = String::from("Hellow rodl!");
 
-    let decryted_string = decrypt_string(passwd, encrypt_string(passwd, plaintext.clone()));
+    let decryted_string = decrypt_string(&passwd, encrypt_string(&passwd, plaintext.clone()));
 
     assert_eq!(decryted_string.unwrap(), plaintext);
 }
 
 #[test]
 fn test_encryption_data() {
-    let passwd = "some password!";
+    let passwd = "some password!".to_string();
     let plaintext = String::from("Hellow rodl!");
 
-    let encrypted_data = encrypt_string(passwd, plaintext.clone());
+    let encrypted_data = encrypt_string(&passwd, plaintext.clone());
 
     let result = String::from_utf8(encrypted_data.data);
     if let Some(result_str) = result.ok() {
@@ -75,8 +78,8 @@ fn test_encryption_data() {
 #[test]
 fn test_encryption_acces_with_wrong_passwd() {
     let result = decrypt_string(
-        "Second password!",
-        encrypt_string("First password!", String::from("Some string")),
+        &"Second password!".to_string(),
+        encrypt_string(&"First password!".to_string(), String::from("Some string")),
     );
     let expected = DecryptionError::WrongPassword;
 

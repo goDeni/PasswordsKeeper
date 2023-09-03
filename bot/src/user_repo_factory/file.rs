@@ -59,7 +59,7 @@ mod tests {
         let tmp_dir = TempDir::new("tests_").unwrap();
 
         let user_id = "user_id".to_string();
-        let passwd = "123";
+        let passwd = "123".to_string();
 
         let factory = FileRepositoriesFactory(tmp_dir.into_path());
 
@@ -72,12 +72,12 @@ mod tests {
         let tmp_dir = TempDir::new("tests_").unwrap();
 
         let user_id = "user_id".to_string();
-        let passwd = "123";
+        let passwd = "123".to_string();
 
         let factory = FileRepositoriesFactory(tmp_dir.into_path());
 
         let repo = factory
-            .initialize_user_repository(&user_id, passwd)
+            .initialize_user_repository(&user_id, passwd.clone())
             .unwrap();
         repo.save().unwrap();
 
@@ -97,11 +97,13 @@ mod tests {
         let factory = FileRepositoriesFactory(tmp_dir.into_path());
 
         factory
-            .initialize_user_repository(&user_id, passwd)
+            .initialize_user_repository(&user_id, passwd.to_string())
             .unwrap()
             .save()
             .unwrap();
-        let result = factory.get_user_repository(&user_id, "312").unwrap_err();
+        let result = factory
+            .get_user_repository(&user_id, "312".to_string())
+            .unwrap_err();
 
         assert_eq!(result, RepositoryOpenError::WrongPassword);
     }

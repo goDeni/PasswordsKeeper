@@ -40,7 +40,6 @@ where
     fn open(self, passwd: EncryptionKey) -> OpenResult<T>;
 }
 
-
 impl core::fmt::Debug for dyn RecordsRepository {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "RecordsRepository")

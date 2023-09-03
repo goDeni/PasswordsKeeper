@@ -4,7 +4,7 @@ use std::{collections::HashMap, path::PathBuf};
 use anyhow::{Context, Result};
 use uuid::Uuid;
 
-use crate::cipher::{decrypt_string, encrypt_string, EncryptedData, DecryptionError};
+use crate::cipher::{decrypt_string, encrypt_string, DecryptionError, EncryptedData};
 use crate::record::EncryptedRecord;
 use crate::repository::{
     AddResult, OpenRepository, OpenResult, RecordAlreadyExist, RecordDoesntExist,
@@ -53,7 +53,7 @@ impl OpenRepository<RecordsFileRepository> for OpenRecordsFileRepository {
             Ok(file) => {
                 let raw_rep = serde_json::from_reader::<File, RawRepositoryJson>(file).unwrap();
 
-                match decrypt_string(passwd, raw_rep.0) {
+                match decrypt_string(&passwd, raw_rep.0) {
                     Err(DecryptionError::WrongPassword) => Err(RepositoryOpenError::WrongPassword),
                     Err(DecryptionError::UnexpectedError) => {
                         Err(RepositoryOpenError::UnexpectedError)
@@ -61,16 +61,16 @@ impl OpenRepository<RecordsFileRepository> for OpenRecordsFileRepository {
                     Ok(identifier) => Ok(RecordsFileRepository {
                         file: self.0,
                         identifier: identifier,
-                        passwd: passwd,
                         records: HashMap::from_iter(
                             raw_rep
                                 .1
                                 .iter()
                                 .map(|encrypted_record| {
-                                    Record::decrypt(passwd, encrypted_record).unwrap()
+                                    Record::decrypt(&passwd, encrypted_record).unwrap()
                                 })
                                 .map(|record| (record.id.clone(), record)),
                         ),
+                        passwd: passwd,
                     }),
                 }
             }
@@ -87,10 +87,10 @@ impl RecordsRepository for RecordsFileRepository {
                 .open(&self.file)
                 .with_context(|| format!("Failed file open: {:?}", self.file))?,
             &RawRepositoryJson(
-                encrypt_string(self.passwd, self.identifier.clone()),
+                encrypt_string(&self.passwd, self.identifier.clone()),
                 self.records
                     .values()
-                    .map(|rec| rec.encrypt(self.passwd))
+                    .map(|rec| rec.encrypt(&self.passwd))
                     .collect::<Vec<EncryptedRecord>>(),
             ),
         )
@@ -151,7 +151,7 @@ mod tests {
             (String::from("Password"), String::from("2")),
         ];
 
-        let passwd = "Passwd";
+        let passwd = "Passwd".to_string();
         let record = Record::new(fields);
         let mut repo = RecordsFileRepository::new(file, passwd);
 
@@ -174,8 +174,8 @@ mod tests {
         ];
         let record = Record::new(fields);
 
-        let passwd = "Passwd";
-        let mut repo = RecordsFileRepository::new(file.clone(), passwd);
+        let passwd = "Passwd".to_string();
+        let mut repo = RecordsFileRepository::new(file.clone(), passwd.clone());
         repo.add_record(record).unwrap();
         repo.save().unwrap();
 
@@ -199,7 +199,7 @@ mod tests {
             (String::from("Password"), String::from("2")),
         ];
 
-        let passwd = "Passwd";
+        let passwd = "Passwd".to_string();
 
         let old_record = Record::new(fields);
         let mut repo = RecordsFileRepository::new(file, passwd);
@@ -207,7 +207,9 @@ mod tests {
         repo.add_record(old_record.clone()).unwrap();
 
         let mut new_record = repo.get(&old_record.id).unwrap().clone();
-        new_record.add_field("Field3".to_string(), "3".to_string()).unwrap();
+        new_record
+            .add_field("Field3".to_string(), "3".to_string())
+            .unwrap();
 
         repo.update(new_record.clone()).unwrap();
 
@@ -229,7 +231,7 @@ mod tests {
             (String::from("Password"), String::from("2")),
         ];
 
-        let passwd = "Passwd";
+        let passwd = "Passwd".to_string();
 
         let record = Record::new(fields);
         let mut repo = RecordsFileRepository::new(file, passwd);
@@ -250,11 +252,14 @@ mod tests {
     fn test_repository_open_with_wrong_passwd() {
         let tmp_dir = TempDir::new("test_").unwrap();
 
-        let repo = RecordsFileRepository::new(tmp_dir.path().join("repo_file"), "One password");
+        let repo = RecordsFileRepository::new(
+            tmp_dir.path().join("repo_file"),
+            "One password".to_string(),
+        );
         repo.save().unwrap();
 
         let result = OpenRecordsFileRepository(repo.file)
-            .open("Wrong passwd")
+            .open("Wrong passwd".to_string())
             .unwrap_err();
         assert_eq!(result, RepositoryOpenError::WrongPassword);
 
@@ -265,10 +270,10 @@ mod tests {
     fn test_repository_open_missed_file() {
         let tmp_dir = TempDir::new("test_").unwrap();
         let result = OpenRecordsFileRepository(tmp_dir.path().join("any_file"))
-            .open("Wrong passwd")
+            .open("Wrong passwd".to_string())
             .unwrap_err();
 
-        assert_eq!(result, RepositoryOpenError::UnexpectedError);
+        assert_eq!(result, RepositoryOpenError::DoesntExist);
 
         tmp_dir.close().unwrap();
     }

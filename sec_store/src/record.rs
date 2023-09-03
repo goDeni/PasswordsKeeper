@@ -72,7 +72,7 @@ impl Record {
         }
     }
 
-    pub fn encrypt(&self, passwd: EncryptionKey) -> EncryptedRecord {
+    pub fn encrypt(&self, passwd: &EncryptionKey) -> EncryptedRecord {
         serde_json::to_string(&encrypt_string(
             passwd,
             serde_json::to_string(self).unwrap(),
@@ -81,7 +81,7 @@ impl Record {
     }
 
     pub fn decrypt(
-        passwd: EncryptionKey,
+        passwd: &EncryptionKey,
         encrypted_record: &EncryptedRecord,
     ) -> DecryptResult<Record> {
         Ok(serde_json::from_str::<Record>(&decrypt_string(
@@ -99,17 +99,17 @@ mod tests {
     #[test]
     fn test_record_encryption() {
         let fields = vec![(String::from("First"), String::from("1"))];
-        super::Record::new(fields).encrypt("password");
+        super::Record::new(fields).encrypt(&"password".to_string());
     }
 
     #[test]
     fn test_record_decryption() {
-        let passwd = "password";
+        let passwd = "password".to_string();
 
         let fields = vec![(String::from("First"), String::from("1"))];
         let original_record = super::Record::new(fields.clone());
         let decrypted_record =
-            super::Record::decrypt(passwd, &original_record.encrypt(passwd)).unwrap();
+            super::Record::decrypt(&passwd, &original_record.encrypt(&passwd)).unwrap();
 
         assert_eq!(original_record, decrypted_record);
         assert_eq!(decrypted_record.fields, fields);
@@ -118,8 +118,10 @@ mod tests {
     #[test]
     fn test_record_decryption_with_bad_passwd() {
         let fields = vec![(String::from("First"), String::from("1"))];
-        let result =
-            super::Record::decrypt("Second", &super::Record::new(fields.clone()).encrypt("One"));
+        let result = super::Record::decrypt(
+            &"Second".to_string(),
+            &super::Record::new(fields.clone()).encrypt(&"One".to_string()),
+        );
 
         let expected = crate::cipher::DecryptionError::WrongPassword;
         assert_eq!(result, Err(expected));
@@ -163,9 +165,7 @@ mod tests {
 
         assert_eq!(
             record.get_fields(),
-            vec![
-                (&"Field1".to_string(), &"Value2".to_string()),
-            ]
+            vec![(&"Field1".to_string(), &"Value2".to_string()),]
         )
     }
 
@@ -174,10 +174,8 @@ mod tests {
         let fields = vec![("Field1".to_string(), "Value1".to_string())];
         let mut record = Record::new(fields);
 
-        let result = record
-            .update_field("Field2".to_string(), "Value2".to_string());
+        let result = record.update_field("Field2".to_string(), "Value2".to_string());
 
         assert_eq!(result, Err(crate::record::FieldDoesntExist));
     }
-
 }

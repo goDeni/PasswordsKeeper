@@ -2,6 +2,7 @@ extern crate sec_store;
 
 use std::{fs::create_dir, path::Path, sync::Arc};
 
+use async_mutex::Mutex;
 use bot::{
     dialogues::{build_handler, BotContext, State},
     reps_store::store::RepositoriesStore,
@@ -21,7 +22,7 @@ async fn main() {
         .parse_filters(&std::env::var(&"RUST_LOG").unwrap_or("DEBUG".to_string()))
         .init();
 
-    let data_path = Path::new("./.passwords_keeper_data");
+    let data_path = Path::new("./.passwords_keeper_bot_data");
     if !data_path.exists() {
         create_dir(data_path).unwrap();
     }
@@ -34,7 +35,7 @@ async fn main() {
     Dispatcher::builder(bot, build_handler())
         .dependencies(dptree::deps![
             InMemStorage::<State>::new(),
-            Arc::new(BotContext { store })
+            Arc::new(Mutex::new(BotContext { store }))
         ])
         .default_handler(|upd| async move {
             log::warn!("Unhandled update: {:?}", upd);

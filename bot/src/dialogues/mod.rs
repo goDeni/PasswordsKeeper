@@ -1,5 +1,5 @@
-mod welcome;
 mod create_repo;
+mod welcome;
 
 use std::error::Error;
 
@@ -15,14 +15,17 @@ use crate::{
     reps_store::store::RepositoriesStore, user_repo_factory::file::FileRepositoriesFactory,
 };
 
-use self::{welcome::{default_callback_handler, main_state_handler, default_message_handler}, create_repo::create_repo_callback};
+use self::{
+    create_repo::{create_repo_callback, handle_password_message_handler},
+    welcome::{default_callback_handler, default_message_handler, main_state_handler},
+};
 
 #[derive(Clone, Default, Debug)]
 pub enum State {
     #[default]
     MainState,
     CreateRepoState,
-    ThirdState,
+    CreateRepoStateEnterPass,
 }
 
 pub struct BotContext {
@@ -38,6 +41,10 @@ pub fn build_handler(
     let messages_hanler = Update::filter_message()
         .enter_dialogue::<Message, InMemStorage<State>, State>()
         .branch(dptree::case![State::MainState].endpoint(main_state_handler))
+        .branch(
+            dptree::case![State::CreateRepoStateEnterPass]
+                .endpoint(handle_password_message_handler),
+        )
         .endpoint(default_message_handler);
 
     let callbacks_hanlder = Update::filter_callback_query()

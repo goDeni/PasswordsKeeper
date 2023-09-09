@@ -10,6 +10,7 @@ use crate::user_repo_factory::{InitRepoResult, RepositoriesFactory, RepositoryAl
 
 use super::UserId;
 
+#[derive(Clone)]
 pub struct FileRepositoriesFactory(pub PathBuf);
 
 impl FileRepositoriesFactory {

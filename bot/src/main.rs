@@ -1,14 +1,13 @@
 extern crate sec_store;
 
-use std::{fs::create_dir, path::Path, sync::Arc};
-
-use async_mutex::Mutex;
 use bot::{
-    dialogues::{build_handler, BotContext, State},
-    reps_store::store::RepositoriesStore,
+    handler::{build_handler, BotContext, State},
     user_repo_factory::file::FileRepositoriesFactory,
 };
+use sec_store::repository::file::RecordsFileRepository;
+use std::{collections::HashMap, fs::create_dir, path::Path, sync::Arc};
 use teloxide::{dispatching::dialogue::InMemStorage, prelude::*};
+use tokio::sync::RwLock;
 
 #[tokio::main]
 async fn main() {
@@ -30,12 +29,14 @@ async fn main() {
     log::info!("Starting bot...");
     let bot = Bot::from_env();
 
-    let store = RepositoriesStore::new(FileRepositoriesFactory(data_path.to_path_buf()));
-
-    Dispatcher::builder(bot, build_handler())
+    let factory = FileRepositoriesFactory(data_path.to_path_buf());
+    Dispatcher::builder(bot, build_handler::<RecordsFileRepository>())
         .dependencies(dptree::deps![
             InMemStorage::<State>::new(),
-            Arc::new(Mutex::new(BotContext { store }))
+            Arc::new(RwLock::new(BotContext {
+                factory: Arc::new(Box::new(factory)),
+                dial_ctxs: HashMap::new()
+            }))
         ])
         .default_handler(|upd| async move {
             log::warn!("Unhandled update: {:?}", upd);

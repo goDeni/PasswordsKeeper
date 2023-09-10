@@ -1,14 +1,14 @@
-use std::{collections::HashMap, error::Error, ops::Deref};
+use std::{collections::HashMap, error::Error};
 
 use sec_store::repository::RecordsRepository;
 use teloxide::{
     dispatching::{
-        dialogue::{self, GetChatId, InMemStorage},
+        dialogue::{GetChatId, InMemStorage},
         DpHandlerDescription, HandlerExt, UpdateFilterExt,
     },
     dptree,
     payloads::SendMessageSetters,
-    prelude::{DependencyMap, Dialogue, Handler},
+    prelude::{DependencyMap, Handler},
     requests::Requester,
     types::{CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, Update, UserId},
     Bot,
@@ -22,11 +22,9 @@ use crate::{
 use std::sync::Arc;
 
 #[derive(Clone, Default, Debug)]
-pub enum State {
+pub enum BotState {
     #[default]
-    MainState,
-    CreateRepoState,
-    CreateRepoStateEnterPass,
+    Default,
 }
 
 pub struct BotContext<T: RecordsRepository> {
@@ -35,7 +33,6 @@ pub struct BotContext<T: RecordsRepository> {
 }
 
 pub type HandlerResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
-pub type MyDialogue = Dialogue<State, InMemStorage<State>>;
 
 async fn initialize_dialog_ctx<T: RecordsRepository + 'static>(
     context: Arc<RwLock<BotContext<T>>>,
@@ -83,6 +80,7 @@ async fn process_ctx_results<T: RecordsRepository + 'static>(
                     .dial_ctxs
                     .insert(user_id, RwLock::new(new_ctx))
                 {
+                    log::debug!("Results processing ({user_id}): calling shutdown for old ctx...");
                     new_bucket.push(
                         old_ctx
                             .write()
@@ -90,8 +88,9 @@ async fn process_ctx_results<T: RecordsRepository + 'static>(
                             .shutdown()
                             .expect(format!("Failed ctx shutdown for {}", user_id).as_str()),
                     );
+                    log::debug!("Results processing ({user_id}): old ctx finished");
                 }
-                log::debug!("New ctx intialization for {user_id}");
+                log::debug!("Results processing ({user_id}): New ctx intialization");
                 new_bucket.push(
                     context
                         .read()
@@ -104,6 +103,7 @@ async fn process_ctx_results<T: RecordsRepository + 'static>(
                         .init()
                         .expect(format!("Failed new context initialization {}", user_id).as_str()),
                 );
+                log::debug!("Results processing ({user_id}): New ctx initialized");
             }
             _ => unreachable!(),
         }
@@ -111,14 +111,23 @@ async fn process_ctx_results<T: RecordsRepository + 'static>(
         buckets.push(new_bucket);
     }
 
+    log::debug!(
+        "Results processing ({user_id}): executing {} results...",
+        new_ctx_results.len()
+    );
     for ctx_result in new_ctx_results {
         match ctx_result {
             CtxResult::Messages(messages) => {
+                log::debug!(
+                    "Results processing ({user_id}): sending {} messages",
+                    messages.len()
+                );
                 for msg in messages {
                     bot.send_message(user_id, msg).await?;
                 }
             }
             CtxResult::Buttons(msg, selector) => {
+                log::debug!("Results processing ({user_id}): sending keyboard");
                 let markup = InlineKeyboardMarkup::new(selector.into_iter().map(|buttons_row| {
                     buttons_row
                         .into_iter()
@@ -127,10 +136,17 @@ async fn process_ctx_results<T: RecordsRepository + 'static>(
                 }));
                 bot.send_message(user_id, msg).reply_markup(markup).await?;
             }
+            CtxResult::RemoveMessages(messages_ids) => {
+                log::debug!("Results processing ({user_id}): removing {} messages", messages_ids.len());
+                for message_id in messages_ids {
+                    bot.delete_message(user_id, message_id.into()).await?;
+                }
+            }
             CtxResult::Nothing => {}
             CtxResult::NewCtx(_) => unreachable!(),
         }
     }
+    log::debug!("Results processing ({user_id}): all results processed");
     Ok(())
 }
 
@@ -147,29 +163,15 @@ pub async fn main_state_handler<T: RecordsRepository + 'static>(
     }
     let rctx = context.read().await;
     let mut dial = rctx.dial_ctxs.get(&user_id).unwrap().write().await;
-    if let Some(text) = msg.text() {
-        ctx_results.push(dial.handle_input(text).expect("Failed input handling"));
-    }
+    ctx_results.push(
+        dial.handle_message(msg.into())
+            .expect("Failed input handling"),
+    );
 
     drop(dial);
     drop(rctx);
 
     process_ctx_results(user_id, context, bot, ctx_results).await
-}
-
-pub async fn default_message_handler<T: RecordsRepository>(
-    bot: Bot,
-    msg: Message,
-    _context: Arc<RwLock<BotContext<T>>>,
-) -> HandlerResult {
-    log::debug!(
-        "Defalt message handler called. chat_id: {}; from: {:?}",
-        msg.chat.id,
-        msg.from().map(|msg_from| msg_from.id)
-    );
-
-    bot.delete_message(msg.chat.id, msg.id).await?;
-    Ok(())
 }
 
 pub async fn default_callback_handler<T: RecordsRepository + 'static>(
@@ -212,12 +214,11 @@ pub fn build_handler<T: RecordsRepository + 'static>(
 ) -> Handler<'static, DependencyMap, Result<(), Box<dyn Error + Send + Sync>>, DpHandlerDescription>
 {
     let messages_hanler = Update::filter_message()
-        .enter_dialogue::<Message, InMemStorage<State>, State>()
-        .branch(dptree::case![State::MainState].endpoint(main_state_handler::<T>))
-        .endpoint(default_message_handler::<T>);
+        .enter_dialogue::<Message, InMemStorage<BotState>, BotState>()
+        .endpoint(main_state_handler::<T>);
 
     let callbacks_hanlder = Update::filter_callback_query()
-        .enter_dialogue::<CallbackQuery, InMemStorage<State>, State>()
+        .enter_dialogue::<CallbackQuery, InMemStorage<BotState>, BotState>()
         .endpoint(default_callback_handler::<T>);
 
     dptree::entry()

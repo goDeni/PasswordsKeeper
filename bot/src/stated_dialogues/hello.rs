@@ -6,13 +6,14 @@ use crate::user_repo_factory::RepositoriesFactory;
 use anyhow::Result;
 
 use super::{
-    create_repo::CreateRepoDialogue, ButtonPayload, CtxResult, DialContext, DialogueId, State,
+    create_repo::CreateRepoDialogue, ButtonPayload, CtxResult, DialContext, DialogState,
+    DialogueId, Message,
 };
 
 pub struct HelloDialogue<T> {
     dial_id: DialogueId,
     factory: Arc<Box<dyn RepositoriesFactory<T> + Sync + Send>>,
-    state: State,
+    state: DialogState,
 }
 
 impl<T> HelloDialogue<T>
@@ -26,7 +27,7 @@ where
         HelloDialogue {
             dial_id,
             factory,
-            state: State::IDLE,
+            state: DialogState::IDLE,
         }
     }
 }
@@ -72,15 +73,11 @@ where
         }
     }
 
-    fn handle_input(&mut self, _input: &str) -> Result<CtxResult> {
-        Ok(CtxResult::Nothing)
+    fn handle_message(&mut self, input: Message) -> Result<CtxResult> {
+        Ok(CtxResult::RemoveMessages(vec![input.id().to_owned()]))
     }
 
-    fn handle_command<C>(&mut self, _command: C) -> Result<CtxResult>
-    where
-        C: AsRef<str>,
-        Self: Sized,
-    {
+    fn handle_command(&mut self, _command: &str) -> Result<CtxResult> {
         Ok(CtxResult::Nothing)
     }
 }

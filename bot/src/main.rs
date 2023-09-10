@@ -1,7 +1,7 @@
 extern crate sec_store;
 
 use bot::{
-    handler::{build_handler, BotContext, State},
+    handler::{build_handler, BotContext, BotState},
     user_repo_factory::file::FileRepositoriesFactory,
 };
 use sec_store::repository::file::RecordsFileRepository;
@@ -32,7 +32,7 @@ async fn main() {
     let factory = FileRepositoriesFactory(data_path.to_path_buf());
     Dispatcher::builder(bot, build_handler::<RecordsFileRepository>())
         .dependencies(dptree::deps![
-            InMemStorage::<State>::new(),
+            InMemStorage::<BotState>::new(),
             Arc::new(RwLock::new(BotContext {
                 factory: Arc::new(Box::new(factory)),
                 dial_ctxs: HashMap::new()

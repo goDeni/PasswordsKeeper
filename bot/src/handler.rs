@@ -16,7 +16,7 @@ use teloxide::{
 use tokio::sync::RwLock;
 
 use crate::{
-    stated_dialogues::{hello::HelloDialogue, CtxResult, DialContext, DialogueId},
+    stated_dialogues::{hello::HelloDialogue, CtxResult, DialContext, MessageId},
     user_repo_factory::RepositoriesFactory,
 };
 use std::sync::Arc;
@@ -34,20 +34,20 @@ pub struct BotContext<T: RecordsRepository> {
 
 pub type HandlerResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
-async fn initialize_dialog_ctx<T: RecordsRepository + 'static>(
+async fn initialize_dialog_ctx<T: RecordsRepository + Sync + Send + 'static>(
     context: Arc<RwLock<BotContext<T>>>,
     user_id: UserId,
 ) -> Vec<CtxResult> {
     log::debug!("Creating new dialogue with {user_id}...");
     let mut wctx = context.write().await;
     let factory = wctx.factory.clone();
-    let mut dial = HelloDialogue::<T>::new(DialogueId(user_id.to_string()), factory);
+    let mut dial = HelloDialogue::<T>::new(user_id.into(), factory);
     let result = dial.init().expect("Failed dialogue initialize");
 
     wctx.dial_ctxs.insert(user_id, RwLock::new(Box::new(dial)));
     log::debug!("New dialogue with {user_id} created!");
 
-    return vec![result];
+    return result;
 }
 
 async fn process_ctx_results<T: RecordsRepository + 'static>(
@@ -81,7 +81,7 @@ async fn process_ctx_results<T: RecordsRepository + 'static>(
                     .insert(user_id, RwLock::new(new_ctx))
                 {
                     log::debug!("Results processing ({user_id}): calling shutdown for old ctx...");
-                    new_bucket.push(
+                    new_bucket.extend(
                         old_ctx
                             .write()
                             .await
@@ -91,7 +91,7 @@ async fn process_ctx_results<T: RecordsRepository + 'static>(
                     log::debug!("Results processing ({user_id}): old ctx finished");
                 }
                 log::debug!("Results processing ({user_id}): New ctx intialization");
-                new_bucket.push(
+                new_bucket.extend(
                     context
                         .read()
                         .await
@@ -122,9 +122,21 @@ async fn process_ctx_results<T: RecordsRepository + 'static>(
                     "Results processing ({user_id}): sending {} messages",
                     messages.len()
                 );
+                let mut sent_messages_ids: Vec<MessageId> = Vec::new();
                 for msg in messages {
-                    bot.send_message(user_id, msg).await?;
+                    bot.send_message(user_id, msg)
+                        .await
+                        .map(|msg| sent_messages_ids.push(msg.id.into()))?;
                 }
+                context
+                    .read()
+                    .await
+                    .dial_ctxs
+                    .get(&user_id)
+                    .unwrap()
+                    .write()
+                    .await
+                    .remember_sent_messages(sent_messages_ids);
             }
             CtxResult::Buttons(msg, selector) => {
                 log::debug!("Results processing ({user_id}): sending keyboard");
@@ -134,10 +146,22 @@ async fn process_ctx_results<T: RecordsRepository + 'static>(
                         .map(|(payload, text)| InlineKeyboardButton::callback(text, payload))
                         .collect::<Vec<InlineKeyboardButton>>()
                 }));
-                bot.send_message(user_id, msg).reply_markup(markup).await?;
+                let sent_message = bot.send_message(user_id, msg).reply_markup(markup).await?;
+                context
+                    .read()
+                    .await
+                    .dial_ctxs
+                    .get(&user_id)
+                    .unwrap()
+                    .write()
+                    .await
+                    .remember_sent_messages(vec![sent_message.id.into()]);
             }
             CtxResult::RemoveMessages(messages_ids) => {
-                log::debug!("Results processing ({user_id}): removing {} messages", messages_ids.len());
+                log::debug!(
+                    "Results processing ({user_id}): removing {} messages",
+                    messages_ids.len()
+                );
                 for message_id in messages_ids {
                     bot.delete_message(user_id, message_id.into()).await?;
                 }
@@ -150,31 +174,36 @@ async fn process_ctx_results<T: RecordsRepository + 'static>(
     Ok(())
 }
 
-pub async fn main_state_handler<T: RecordsRepository + 'static>(
+pub async fn main_state_handler<T: RecordsRepository + Sync + Send + 'static>(
     bot: Bot,
     msg: Message,
     context: Arc<RwLock<BotContext<T>>>,
 ) -> HandlerResult {
+    log::debug!(
+        "Handling message. chat_id={} from={:?}",
+        msg.chat.id,
+        msg.from().map(|f| f.id)
+    );
+
     let user_id = msg.from().unwrap().id;
     let mut ctx_results: Vec<CtxResult> = vec![];
 
     if !context.read().await.dial_ctxs.contains_key(&user_id) {
         ctx_results.extend(initialize_dialog_ctx(context.clone(), user_id).await);
     }
-    let rctx = context.read().await;
-    let mut dial = rctx.dial_ctxs.get(&user_id).unwrap().write().await;
-    ctx_results.push(
-        dial.handle_message(msg.into())
-            .expect("Failed input handling"),
-    );
-
-    drop(dial);
-    drop(rctx);
+    {
+        let rctx = context.read().await;
+        let mut dial = rctx.dial_ctxs.get(&user_id).unwrap().write().await;
+        ctx_results.extend(
+            dial.handle_message(msg.into())
+                .expect(&format!("({}): Failed input handling", user_id)),
+        );
+    }
 
     process_ctx_results(user_id, context, bot, ctx_results).await
 }
 
-pub async fn default_callback_handler<T: RecordsRepository + 'static>(
+pub async fn default_callback_handler<T: RecordsRepository + Sync + Send + 'static>(
     bot: Bot,
     query: CallbackQuery,
     context: Arc<RwLock<BotContext<T>>>,
@@ -193,24 +222,18 @@ pub async fn default_callback_handler<T: RecordsRepository + 'static>(
         ctx_results.extend(initialize_dialog_ctx(context.clone(), user_id).await);
     }
 
-    if let Some(data) = query.data {
-        log::debug!("Callback ({user_id}): Handling \"{data}\"");
-
+    log::debug!("Callback ({user_id}): Handling \"{:?}\"", query.data);
+    {
         let rctx = context.read().await;
         let mut dial = rctx.dial_ctxs.get(&user_id).unwrap().write().await;
-        ctx_results.push(dial.handle_select(data.as_str()).unwrap());
-    }
-
-    bot.answer_callback_query(query.id).await?;
-    if let Some(msg) = query.message {
-        bot.delete_message(user_id, msg.id).await?;
+        ctx_results.extend(dial.handle_select(query.into()).unwrap());
     }
 
     log::debug!("Callback ({user_id}): Processing ctx results");
     process_ctx_results(user_id, context, bot, ctx_results).await
 }
 
-pub fn build_handler<T: RecordsRepository + 'static>(
+pub fn build_handler<T: RecordsRepository + Sync + Send + 'static>(
 ) -> Handler<'static, DependencyMap, Result<(), Box<dyn Error + Send + Sync>>, DpHandlerDescription>
 {
     let messages_hanler = Update::filter_message()

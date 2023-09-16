@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use sec_store::repository::RecordsRepository;
 
@@ -7,13 +7,14 @@ use anyhow::Result;
 
 use super::{
     create_repo::CreateRepoDialogue, ButtonPayload, CtxResult, DialContext, DialogState,
-    DialogueId, Message,
+    UserId, Message, MessageId, Select, open_repo::OpenRepoDialogue,
 };
 
 pub struct HelloDialogue<T> {
-    dial_id: DialogueId,
+    user_id: UserId,
     factory: Arc<Box<dyn RepositoriesFactory<T> + Sync + Send>>,
     state: DialogState,
+    sent_msg_ids: HashSet<MessageId>,
 }
 
 impl<T> HelloDialogue<T>
@@ -21,13 +22,14 @@ where
     T: RecordsRepository,
 {
     pub fn new(
-        dial_id: DialogueId,
+        user_id: UserId,
         factory: Arc<Box<dyn RepositoriesFactory<T> + Sync + Send>>,
     ) -> Self {
         HelloDialogue {
-            dial_id,
+            user_id,
             factory,
             state: DialogState::IDLE,
+            sent_msg_ids: HashSet::new(),
         }
     }
 }
@@ -37,48 +39,78 @@ const OPEN_REPO: &'static str = "2";
 
 impl<T> DialContext for HelloDialogue<T>
 where
-    T: RecordsRepository + 'static,
+    T: RecordsRepository + Sync + Send + 'static,
 {
-    fn init(&mut self) -> Result<CtxResult> {
-        match self.factory.user_has_repository(&self.dial_id.0) {
-            false => Ok(CtxResult::Buttons(
-                "Выберите действие".to_string(),
+    fn init(&mut self) -> Result<Vec<CtxResult>> {
+        match self.factory.user_has_repository(&self.user_id.0) {
+            false => Ok(vec![CtxResult::Buttons(
+                "Выберите действие".into(),
                 vec![vec![(
                     ButtonPayload(CREATE_REPO.to_string()),
                     "Создать репозиторий".to_string(),
                 )]],
-            )),
-            true => Ok(CtxResult::Buttons(
-                "Репозиторий".to_string(),
+            )]),
+            true => Ok(vec![CtxResult::Buttons(
+                "Репозиторий".into(),
                 vec![vec![(
                     ButtonPayload(OPEN_REPO.to_string()),
                     "Открыть репозиторий".to_string(),
                 )]],
-            )),
+            )]),
         }
     }
 
-    fn shutdown(&self) -> Result<CtxResult> {
-        Ok(CtxResult::Nothing)
+    fn shutdown(&mut self) -> Result<Vec<CtxResult>> {
+        Ok(vec![CtxResult::RemoveMessages(
+            self.sent_msg_ids
+                .clone()
+                .into_iter()
+                .map(|msg_id| {
+                    self.sent_msg_ids.remove(&msg_id);
+                    msg_id
+                })
+                .collect(),
+        )])
     }
 
-    fn handle_select(&mut self, select: &str) -> Result<CtxResult> {
-        match select.as_ref() {
-            OPEN_REPO => Ok(CtxResult::Nothing),
-            CREATE_REPO => Ok(CtxResult::NewCtx(Box::new(CreateRepoDialogue::new(
-                self.dial_id.clone(),
+    fn handle_select(&mut self, select: Select) -> Result<Vec<CtxResult>> {
+        let result: CtxResult = match (&select.user_id, select.data()) {
+            (user_id, Some(OPEN_REPO)) => CtxResult::NewCtx(Box::new(OpenRepoDialogue::new(
                 self.factory.clone(),
-            )))),
-            _ => Ok(CtxResult::Nothing),
+                user_id.clone(),
+            ))),
+            (_, Some(CREATE_REPO)) => CtxResult::NewCtx(Box::new(CreateRepoDialogue::new(
+                self.user_id.clone(),
+                self.factory.clone(),
+            ))),
+            _ => CtxResult::Nothing
+        };
+
+        if let Some(msg_id) = &select.msg_id {
+            self.sent_msg_ids.remove(msg_id);
         }
+
+        Ok(vec![
+            result,
+            select
+                .msg_id
+                .map(|msg_id| CtxResult::RemoveMessages(vec![msg_id]))
+                .unwrap_or(CtxResult::Nothing),
+        ])
     }
 
-    fn handle_message(&mut self, input: Message) -> Result<CtxResult> {
-        Ok(CtxResult::RemoveMessages(vec![input.id().to_owned()]))
+    fn handle_message(&mut self, input: Message) -> Result<Vec<CtxResult>> {
+        Ok(vec![CtxResult::RemoveMessages(vec![input.id])])
     }
 
-    fn handle_command(&mut self, _command: &str) -> Result<CtxResult> {
-        Ok(CtxResult::Nothing)
+    fn handle_command(&mut self, command: Message) -> Result<Vec<CtxResult>> {
+        Ok(vec![CtxResult::RemoveMessages(vec![command.id])])
+    }
+
+    fn remember_sent_messages(&mut self, msg_ids: Vec<MessageId>) {
+        msg_ids.into_iter().for_each(|msg_id| {
+            self.sent_msg_ids.insert(msg_id);
+        });
     }
 }
 
@@ -92,7 +124,7 @@ mod tests {
     use crate::{
         stated_dialogues::{
             hello::{CREATE_REPO, OPEN_REPO},
-            ButtonPayload,
+            ButtonPayload, MessageId, Select, UserId,
         },
         user_repo_factory::{file::FileRepositoriesFactory, RepositoriesFactory},
     };
@@ -101,15 +133,17 @@ mod tests {
 
     #[test]
     fn test_init_no_rep() {
-        let dial_id = super::DialogueId("1".to_string());
+        let dial_id = super::UserId("1".to_string());
         let tmp_dir = TempDir::new("tests_").unwrap();
         let factory = FileRepositoriesFactory(tmp_dir.into_path());
 
         let mut dialog = HelloDialogue::new(dial_id, Arc::new(Box::new(factory)));
+        let mut result = dialog.init().unwrap();
+        assert_eq!(result.len(), 1);
 
-        match dialog.init().unwrap() {
+        match result.remove(0) {
             CtxResult::Buttons(message, selector) => {
-                assert_eq!(message, "Выберите действие".to_string());
+                assert_eq!(message, "Выберите действие".into());
                 assert_eq!(
                     selector,
                     vec![vec![(
@@ -124,7 +158,7 @@ mod tests {
 
     #[test]
     fn test_init_with_rep() {
-        let dial_id = super::DialogueId("1".to_string());
+        let dial_id = super::UserId("1".to_string());
         let passwd = "123".to_string();
 
         let tmp_dir = TempDir::new("tests_").unwrap();
@@ -135,10 +169,12 @@ mod tests {
         rep.save().unwrap();
 
         let mut dialog = HelloDialogue::new(dial_id, Arc::new(Box::new(factory)));
+        let mut result = dialog.init().unwrap();
+        assert_eq!(result.len(), 1);
 
-        match dialog.init().unwrap() {
+        match result.remove(0) {
             CtxResult::Buttons(message, selector) => {
-                assert_eq!(message, "Репозиторий".to_string());
+                assert_eq!(message, "Репозиторий".into());
                 assert_eq!(
                     selector,
                     vec![vec![(
@@ -153,15 +189,22 @@ mod tests {
 
     #[test]
     fn test_create_repo_select() {
-        let dial_id = super::DialogueId("1".to_string());
+        let dial_id = super::UserId("1".to_string());
         let tmp_dir = TempDir::new("tests_").unwrap();
         let factory = FileRepositoriesFactory(tmp_dir.into_path());
 
         let mut dialog = HelloDialogue::new(dial_id, Arc::new(Box::new(factory)));
 
         dialog.init().unwrap();
+        let mut result = dialog
+            .handle_select(Select::new(
+                Some(MessageId(1)),
+                Some(CREATE_REPO.to_string()),
+                UserId("1".into()),
+            ))
+            .unwrap();
 
-        match dialog.handle_select(CREATE_REPO).unwrap() {
+        match result.remove(0) {
             CtxResult::NewCtx(mut ctx) => {
                 ctx.init().unwrap();
             }

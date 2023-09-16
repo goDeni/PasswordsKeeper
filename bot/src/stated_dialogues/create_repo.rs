@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, marker::PhantomData, sync::Arc};
 
 use sec_store::repository::RecordsRepository;
 
@@ -6,8 +6,8 @@ use crate::user_repo_factory::RepositoriesFactory;
 use anyhow::Result;
 
 use super::{
-    open_repo::OpenRepoDialogue, CtxResult, DialContext, DialogState, Message,
-    MessageId, Select, UserId,
+    open_repo::OpenRepoDialogue, CtxResult, DialContext, DialogState, Message, MessageId, Select,
+    UserId,
 };
 
 #[derive(Clone)]
@@ -17,36 +17,31 @@ enum CreationState {
     WaitPasswordRepeat(String),
 }
 
-pub struct CreateRepoDialogue<T>
-where
-    T: RecordsRepository,
-{
-    factory: Arc<Box<dyn RepositoriesFactory<T> + Sync + Send>>,
+pub struct CreateRepoDialogue<F, R> {
+    factory: F,
     state: DialogState,
     creation_state: CreationState,
     sent_msg_ids: HashSet<MessageId>,
+    //
+    phantom: PhantomData<R>,
 }
 
-impl<T> CreateRepoDialogue<T>
-where
-    T: RecordsRepository,
-{
-    pub fn new(
-        user_id: UserId,
-        factory: Arc<Box<dyn RepositoriesFactory<T> + Sync + Send>>,
-    ) -> Self {
+impl<F, R> CreateRepoDialogue<F, R> {
+    pub fn new(factory: F) -> Self {
         CreateRepoDialogue {
             factory,
             state: DialogState::IDLE,
             creation_state: CreationState::Disabled,
             sent_msg_ids: HashSet::new(),
+            phantom: PhantomData,
         }
     }
 }
 
-impl<T> DialContext for CreateRepoDialogue<T>
+impl<F, R> DialContext for CreateRepoDialogue<F, R>
 where
-    T: RecordsRepository + Sync + Send + 'static,
+    R: RecordsRepository,
+    F: RepositoriesFactory<R>,
 {
     fn init(&mut self) -> Result<Vec<CtxResult>> {
         self.creation_state = CreationState::WaitForPassword;
@@ -98,15 +93,10 @@ where
                     .initialize_user_repository(&user_id.clone().into(), passwd)
                 {
                     Ok(repo) => {
-                        if let Err(err) = repo.save() {
+                        repo.save().map_err(|err| {
                             log::error!("Failed repository saving for {user_id}: {err}");
-                            return Ok(vec![
-                                CtxResult::RemoveMessages(vec![message.id]),
-                                CtxResult::Messages(vec![
-                                    "Не удалось сохранить репозиторий 🤨".into()
-                                ]),
-                            ]);
-                        }
+                            err
+                        })?;
 
                         Ok(vec![
                             CtxResult::RemoveMessages(vec![message.id]),

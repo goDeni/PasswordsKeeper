@@ -1,43 +1,39 @@
 use std::collections::HashSet;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::user_repo_factory::RepositoriesFactory;
 
 use super::hello::HelloDialogue;
-use super::view_repo::ViewRepo;
+use super::view_repo::ViewRepoDialog;
 use super::DialContext;
 use super::{CtxResult, Message, MessageId, Select, UserId};
 use anyhow::Result;
 use sec_store::repository::{RecordsRepository, RepositoryOpenError};
 
-pub struct OpenRepoDialogue<T>
-where
-    T: RecordsRepository,
-{
-    factory: Arc<Box<dyn RepositoriesFactory<T> + Sync + Send>>,
+pub struct OpenRepoDialogue<F, R> {
+    factory: F,
     user_id: UserId,
     sent_msg_ids: HashSet<MessageId>,
+    //
+    phantom: PhantomData<R>,
 }
 
-impl<T> OpenRepoDialogue<T>
-where
-    T: RecordsRepository,
-{
-    pub fn new(
-        factory: Arc<Box<dyn RepositoriesFactory<T> + Sync + Send>>,
-        user_id: UserId,
-    ) -> Self {
+impl<F, R> OpenRepoDialogue<F, R> {
+    pub fn new(factory: F, user_id: UserId) -> Self {
         OpenRepoDialogue {
             factory,
             user_id,
             sent_msg_ids: HashSet::new(),
+            phantom: PhantomData,
         }
     }
 }
 
-impl<T> DialContext for OpenRepoDialogue<T>
+impl<F, R> DialContext for OpenRepoDialogue<F, R>
 where
-    T: RecordsRepository + Sync + Send + 'static,
+    R: RecordsRepository,
+    F: RepositoriesFactory<R>,
 {
     fn init(&mut self) -> Result<Vec<CtxResult>> {
         Ok(vec![CtxResult::Messages(vec!["Введите пароль".into()])])
@@ -70,7 +66,7 @@ where
                     .factory
                     .get_user_repository(&user_id.clone().into(), passwd)
                 {
-                    Ok(repo) => CtxResult::NewCtx(Box::new(ViewRepo::new(repo))),
+                    Ok(repo) => CtxResult::NewCtx(Box::new(ViewRepoDialog::new(repo))),
                     Err(RepositoryOpenError::WrongPassword) => {
                         CtxResult::Messages(
                             vec!["Пароль не подходит 🤨. Попробуйте еще раз".into()],

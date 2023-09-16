@@ -37,6 +37,10 @@ impl Into<stated_dialogues::Message> for teloxide::types::Message {
 
 impl Into<stated_dialogues::Select> for teloxide::types::CallbackQuery {
     fn into(self) -> stated_dialogues::Select {
-        Select::new(self.message.map(|msg| msg.id.into()), self.data, self.from.id.into())
+        Select::new(
+            self.message.map(|msg| msg.id.into()),
+            self.data,
+            self.from.id.into(),
+        )
     }
 }

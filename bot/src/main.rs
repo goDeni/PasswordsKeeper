@@ -5,7 +5,7 @@ use bot::{
     user_repo_factory::file::FileRepositoriesFactory,
 };
 use sec_store::repository::file::RecordsFileRepository;
-use std::{collections::HashMap, fs::create_dir, path::Path, sync::Arc};
+use std::{fs::create_dir, path::Path, sync::Arc};
 use teloxide::{dispatching::dialogue::InMemStorage, prelude::*};
 use tokio::sync::RwLock;
 
@@ -30,22 +30,22 @@ async fn main() {
     let bot = Bot::from_env();
 
     let factory = FileRepositoriesFactory(data_path.to_path_buf());
-    Dispatcher::builder(bot, build_handler::<RecordsFileRepository>())
-        .dependencies(dptree::deps![
-            InMemStorage::<BotState>::new(),
-            Arc::new(RwLock::new(BotContext {
-                factory: Arc::new(Box::new(factory)),
-                dial_ctxs: HashMap::new()
-            }))
-        ])
-        .default_handler(|upd| async move {
-            log::warn!("Unhandled update: {:?}", upd);
-        })
-        .error_handler(LoggingErrorHandler::with_custom_text(
-            "An error has occurred in the dispatcher",
-        ))
-        .enable_ctrlc_handler()
-        .build()
-        .dispatch()
-        .await;
+    Dispatcher::builder(
+        bot,
+        build_handler::<FileRepositoriesFactory, RecordsFileRepository>(),
+    )
+    .dependencies(dptree::deps![
+        InMemStorage::<BotState>::new(),
+        Arc::new(RwLock::new(BotContext::new(factory)))
+    ])
+    .default_handler(|upd| async move {
+        log::warn!("Unhandled update: {:?}", upd);
+    })
+    .error_handler(LoggingErrorHandler::with_custom_text(
+        "An error has occurred in the dispatcher",
+    ))
+    .enable_ctrlc_handler()
+    .build()
+    .dispatch()
+    .await;
 }

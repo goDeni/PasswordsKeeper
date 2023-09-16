@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 type RepositoryId = String;
 type RecordsMap = HashMap<RecordId, Record>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RecordsFileRepository {
     pub identifier: RepositoryId,
     file: PathBuf,
@@ -82,7 +82,7 @@ impl RecordsRepository for RecordsFileRepository {
     fn save(&self) -> Result<()> {
         serde_json::to_writer(
             File::options()
-                .create_new(true)
+                .create(true)
                 .write(true)
                 .open(&self.file)
                 .with_context(|| format!("Failed file open: {:?}", self.file))?,

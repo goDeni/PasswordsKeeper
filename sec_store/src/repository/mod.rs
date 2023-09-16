@@ -5,7 +5,7 @@ use crate::{
     record::{Record, RecordId},
 };
 use anyhow::Result;
-use std::result::Result as StdResult;
+use std::{result::Result as StdResult, fmt::Debug};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RecordDoesntExist;
@@ -24,7 +24,7 @@ pub enum RepositoryOpenError {
     UnexpectedError,
 }
 
-pub trait RecordsRepository {
+pub trait RecordsRepository: Debug + Clone + Sync + Send + 'static {
     fn save(&self) -> Result<()>;
     fn get_records(&self) -> Vec<&Record>;
     fn get(&mut self, record_id: &RecordId) -> Option<&Record>;
@@ -38,10 +38,4 @@ where
     T: RecordsRepository,
 {
     fn open(self, passwd: EncryptionKey) -> OpenResult<T>;
-}
-
-impl core::fmt::Debug for dyn RecordsRepository {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "RecordsRepository")
-    }
 }

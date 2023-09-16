@@ -52,6 +52,13 @@ impl Record {
         self.fields.iter().map(|(a, b)| (a, b)).collect()
     }
 
+    pub fn get_field_value(&self, field_name: &FieldName) -> Option<FieldValue> {
+        self.fields
+            .iter()
+            .find(|(name, _)| name.eq(field_name))
+            .map(|(_, value)| value.clone())
+    }
+
     pub fn update_field(
         &mut self,
         field_name: FieldName,

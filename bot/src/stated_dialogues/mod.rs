@@ -1,3 +1,5 @@
+mod add_record;
+mod common;
 mod create_repo;
 mod open_repo;
 mod view_repo;
@@ -50,6 +52,7 @@ pub enum CtxResult {
     RemoveMessages(Vec<MessageId>),
     Buttons(OutgoingMessage, Vec<Vec<(ButtonPayload, String)>>),
     NewCtx(Box<dyn DialContext + Send + Sync + 'static>),
+    CloseCtx,
     Nothing,
 }
 
@@ -60,6 +63,7 @@ impl Debug for CtxResult {
             Self::Buttons(arg0, arg1) => f.debug_tuple("Buttons").field(arg0).field(arg1).finish(),
             Self::NewCtx(_) => f.debug_tuple("NewCtx(?)").finish(),
             Self::Nothing => write!(f, "Nothing"),
+            Self::CloseCtx => write!(f, "CloseCtx"),
             Self::RemoveMessages(arg0) => f.debug_tuple("RemoveMessages").field(arg0).finish(),
         }
     }
@@ -67,7 +71,7 @@ impl Debug for CtxResult {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MessageId(pub i32);
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct UserId(pub String);
 impl Display for UserId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -136,7 +140,7 @@ pub trait DialContext {
     fn shutdown(&mut self) -> Result<Vec<CtxResult>>;
     //
     fn handle_select(&mut self, select: Select) -> Result<Vec<CtxResult>>;
-    fn handle_message(&mut self, input: Message) -> Result<Vec<CtxResult>>;
+    fn handle_message(&mut self, message: Message) -> Result<Vec<CtxResult>>;
     fn handle_command(&mut self, command: Message) -> Result<Vec<CtxResult>>;
     //
     fn remember_sent_messages(&mut self, msg_ids: Vec<MessageId>);

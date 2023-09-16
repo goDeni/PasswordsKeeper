@@ -1,4 +1,4 @@
-use std::{collections::HashSet, marker::PhantomData, sync::Arc};
+use std::{collections::HashSet, marker::PhantomData};
 
 use sec_store::repository::RecordsRepository;
 

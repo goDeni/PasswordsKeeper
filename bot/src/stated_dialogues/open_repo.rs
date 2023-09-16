@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 use std::marker::PhantomData;
-use std::sync::Arc;
 
 use crate::user_repo_factory::RepositoriesFactory;
 

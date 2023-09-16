@@ -10,13 +10,16 @@ use teloxide::{
     payloads::SendMessageSetters,
     prelude::{DependencyMap, Handler},
     requests::Requester,
-    types::{CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, Update, UserId},
+    types::{
+        CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, ParseMode, Update,
+        UserId,
+    },
     Bot,
 };
 use tokio::sync::RwLock;
 
 use crate::{
-    stated_dialogues::{hello::HelloDialogue, CtxResult, DialContext, MessageId},
+    stated_dialogues::{hello::HelloDialogue, CtxResult, DialContext, MessageFormat, MessageId},
     user_repo_factory::RepositoriesFactory,
 };
 use std::sync::Arc;
@@ -154,7 +157,11 @@ async fn process_ctx_results<F: RepositoriesFactory<R>, R: RecordsRepository>(
                 );
                 let mut sent_messages_ids: Vec<MessageId> = Vec::new();
                 for msg in messages {
-                    bot.send_message(user_id, msg)
+                    bot.send_message(user_id, msg.text())
+                        .parse_mode(match msg.format {
+                            MessageFormat::Text => ParseMode::MarkdownV2,
+                            MessageFormat::Html => ParseMode::Html,
+                        })
                         .await
                         .map(|msg| sent_messages_ids.push(msg.id.into()))?;
                 }
@@ -176,7 +183,14 @@ async fn process_ctx_results<F: RepositoriesFactory<R>, R: RecordsRepository>(
                         .map(|(payload, text)| InlineKeyboardButton::callback(text, payload))
                         .collect::<Vec<InlineKeyboardButton>>()
                 }));
-                let sent_message = bot.send_message(user_id, msg).reply_markup(markup).await?;
+                let sent_message = bot
+                    .send_message(user_id, msg.text())
+                    .parse_mode(match msg.format {
+                        MessageFormat::Html => ParseMode::Html,
+                        MessageFormat::Text => ParseMode::MarkdownV2,
+                    })
+                    .reply_markup(markup)
+                    .await?;
                 context
                     .read()
                     .await

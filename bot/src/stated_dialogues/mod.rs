@@ -2,6 +2,7 @@ mod add_record;
 mod common;
 mod create_repo;
 mod open_repo;
+mod view_record;
 mod view_repo;
 
 pub mod hello;
@@ -16,12 +17,19 @@ enum DialogState {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum MessageFormat {
+    Text,
+    Html,
+}
+
+#[derive(Debug, PartialEq)]
 pub struct OutgoingMessage {
     text: String,
+    pub format: MessageFormat,
 }
 impl OutgoingMessage {
-    pub fn new(text: String) -> Self {
-        OutgoingMessage { text }
+    pub fn new(text: String, format: MessageFormat) -> Self {
+        OutgoingMessage { text, format }
     }
 
     pub fn text(&self) -> &str {
@@ -31,13 +39,13 @@ impl OutgoingMessage {
 
 impl Into<OutgoingMessage> for String {
     fn into(self) -> OutgoingMessage {
-        OutgoingMessage::new(self)
+        OutgoingMessage::new(self, MessageFormat::Text)
     }
 }
 
 impl Into<OutgoingMessage> for &str {
     fn into(self) -> OutgoingMessage {
-        OutgoingMessage::new(self.into())
+        OutgoingMessage::new(self.into(), MessageFormat::Text)
     }
 }
 
@@ -131,6 +139,16 @@ pub struct ButtonPayload(String);
 impl Into<String> for ButtonPayload {
     fn into(self) -> String {
         self.0
+    }
+}
+impl Into<ButtonPayload> for String {
+    fn into(self) -> ButtonPayload {
+        ButtonPayload(self)
+    }
+}
+impl Into<ButtonPayload> for &str {
+    fn into(self) -> ButtonPayload {
+        self.to_string().into()
     }
 }
 

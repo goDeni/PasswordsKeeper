@@ -1,7 +1,8 @@
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
 
 use super::{
-    common::RECORD_NAME_FIELD, ButtonPayload, CtxResult, DialContext, Message, MessageId, Select, add_record::AddRecordDialog,
+    add_record::AddRecordDialog, common::RECORD_NAME_FIELD, view_record::ViewRecordDialog,
+    ButtonPayload, CtxResult, DialContext, Message, MessageId, Select,
 };
 use anyhow::Result;
 use sec_store::repository::RecordsRepository;
@@ -40,18 +41,15 @@ where
                         .unwrap_or("-".to_string()),
                 )
             })
-            .map(|(id, name)| (ButtonPayload(id), name))
+            .map(|(id, name)| (id.into(), name))
             .collect::<Vec<(ButtonPayload, String)>>();
 
         Ok(vec![CtxResult::Buttons(
             format!("Количество записей: {}", records_buttons.len()).into(),
             vec![
                 records_buttons,
-                vec![(ButtonPayload(ADD_RECORD.into()), "Добавить запись 🗒".into())],
-                vec![(
-                    ButtonPayload(CLOSE_REPO.into()),
-                    "Закрыть репозиторий 🚪".into(),
-                )],
+                vec![(ADD_RECORD.into(), "Добавить запись 🗒".into())],
+                vec![(CLOSE_REPO.into(), "Закрыть репозиторий 🚪".into())],
             ],
         )])
     }
@@ -72,7 +70,16 @@ where
     fn handle_select(&mut self, select: Select) -> Result<Vec<CtxResult>> {
         let result: CtxResult = match select.data() {
             Some(CLOSE_REPO) => CtxResult::CloseCtx,
-            Some(ADD_RECORD) => CtxResult::NewCtx(Box::new(AddRecordDialog::new(self.repo.clone()))),
+            Some(ADD_RECORD) => {
+                CtxResult::NewCtx(Box::new(AddRecordDialog::new(self.repo.clone())))
+            }
+            Some(record_id) => match self.repo.get(&record_id.to_string()) {
+                Some(_) => CtxResult::NewCtx(Box::new(ViewRecordDialog::new(
+                    self.repo.clone(),
+                    record_id.to_string(),
+                ))),
+                None => CtxResult::Nothing,
+            },
             _ => CtxResult::Nothing,
         };
 

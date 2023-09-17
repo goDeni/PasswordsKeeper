@@ -41,16 +41,18 @@ where
                         .unwrap_or("-".to_string()),
                 )
             })
-            .map(|(id, name)| (id.into(), name))
-            .collect::<Vec<(ButtonPayload, String)>>();
+            .map(|(id, name)| vec![(id.into(), name)])
+            .collect::<Vec<Vec<(ButtonPayload, String)>>>();
 
+        let records_count = records_buttons.len();
+        let mut buttons = records_buttons;
+        buttons.extend(vec![
+            vec![(ADD_RECORD.into(), "Добавить запись 🗒".into())],
+            vec![(CLOSE_REPO.into(), "Закрыть репозиторий 🚪".into())],
+        ]);
         Ok(vec![CtxResult::Buttons(
-            format!("Количество записей: {}", records_buttons.len()).into(),
-            vec![
-                records_buttons,
-                vec![(ADD_RECORD.into(), "Добавить запись 🗒".into())],
-                vec![(CLOSE_REPO.into(), "Закрыть репозиторий 🚪".into())],
-            ],
+            format!("Количество записей: {}", records_count).into(),
+            buttons,
         )])
     }
 

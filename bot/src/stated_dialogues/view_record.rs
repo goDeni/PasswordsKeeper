@@ -98,7 +98,7 @@ where
                 self.repo.delete(&self.record_id)?;
                 self.repo.save()?;
                 CtxResult::NewCtx(Box::new(ViewRepoDialog::new(self.repo.clone())))
-            },
+            }
             Some(CLOSE_VIEW) => CtxResult::NewCtx(Box::new(ViewRepoDialog::new(self.repo.clone()))),
             other => {
                 log::warn!("Unexpected select called {:?}", other);

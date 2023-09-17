@@ -80,14 +80,7 @@ where
 
     fn shutdown(&mut self) -> Result<Vec<CtxResult>> {
         Ok(vec![CtxResult::RemoveMessages(
-            self.sent_msg_ids
-                .clone()
-                .into_iter()
-                .map(|msg_id| {
-                    self.sent_msg_ids.remove(&msg_id);
-                    msg_id
-                })
-                .collect(),
+            self.sent_msg_ids.drain().collect(),
         )])
     }
 

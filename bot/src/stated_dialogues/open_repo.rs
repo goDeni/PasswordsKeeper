@@ -40,14 +40,7 @@ where
 
     fn shutdown(&mut self) -> Result<Vec<CtxResult>> {
         Ok(vec![CtxResult::RemoveMessages(
-            self.sent_msg_ids
-                .clone()
-                .into_iter()
-                .map(|msg_id| {
-                    self.sent_msg_ids.remove(&msg_id);
-                    msg_id
-                })
-                .collect(),
+            self.sent_msg_ids.drain().collect(),
         )])
     }
 
@@ -59,26 +52,27 @@ where
     }
 
     fn handle_message(&mut self, message: Message) -> Result<Vec<CtxResult>> {
-        let result = match (&message.user_id, message.text) {
-            (Some(user_id), Some(passwd)) => {
-                match self
-                    .factory
-                    .get_user_repository(&user_id.clone().into(), passwd)
-                {
-                    Ok(repo) => Ok(CtxResult::NewCtx(Box::new(ViewRepoDialog::new(repo)))),
-                    Err(RepositoryOpenError::WrongPassword) => Ok(CtxResult::Messages(vec![
-                        "Пароль не подходит 🤨. Попробуйте еще раз".into(),
-                    ])),
-                    Err(RepositoryOpenError::DoesntExist) => Ok(CtxResult::NewCtx(Box::new(
-                        HelloDialogue::new(user_id.clone(), self.factory.clone()),
-                    ))),
-                    Err(error) => Err(error),
+        Ok(vec![
+            CtxResult::RemoveMessages(self.sent_msg_ids.drain().chain(vec![message.id]).collect()),
+            match (&message.user_id, message.text) {
+                (Some(user_id), Some(passwd)) => {
+                    match self
+                        .factory
+                        .get_user_repository(&user_id.clone().into(), passwd)
+                    {
+                        Ok(repo) => Ok(CtxResult::NewCtx(Box::new(ViewRepoDialog::new(repo)))),
+                        Err(RepositoryOpenError::WrongPassword) => Ok(CtxResult::Messages(vec![
+                            "Пароль не подходит 🤨. Попробуйте еще раз".into(),
+                        ])),
+                        Err(RepositoryOpenError::DoesntExist) => Ok(CtxResult::NewCtx(Box::new(
+                            HelloDialogue::new(user_id.clone(), self.factory.clone()),
+                        ))),
+                        Err(error) => Err(error),
+                    }
                 }
-            }
-            _ => Ok(CtxResult::Nothing),
-        }?;
-
-        Ok(vec![CtxResult::RemoveMessages(vec![message.id]), result])
+                _ => Ok(CtxResult::Nothing),
+            }?,
+        ])
     }
 
     fn handle_command(&mut self, command: Message) -> Result<Vec<CtxResult>> {

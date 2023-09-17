@@ -56,7 +56,7 @@ fn record_as_message(record: &Record) -> String {
 
 const EDIT_RECORD: &'static str = "EDIT_RECORD";
 const REMOVE_RECORD: &'static str = "REMOVE_RECORD";
-const CLOSE_VIEW: &'static str = "REMOVE_RECORD";
+const CLOSE_VIEW: &'static str = "CLOSE_VIEW";
 
 impl<T> DialContext for ViewRecordDialog<T>
 where
@@ -91,8 +91,22 @@ where
         )])
     }
 
-    fn handle_select(&mut self, _select: Select) -> Result<Vec<CtxResult>> {
-        Ok(vec![])
+    fn handle_select(&mut self, select: Select) -> Result<Vec<CtxResult>> {
+        let result = match select.data() {
+            Some(EDIT_RECORD) => CtxResult::Nothing,
+            Some(REMOVE_RECORD) => {
+                self.repo.delete(&self.record_id)?;
+                self.repo.save()?;
+                CtxResult::NewCtx(Box::new(ViewRepoDialog::new(self.repo.clone())))
+            },
+            Some(CLOSE_VIEW) => CtxResult::NewCtx(Box::new(ViewRepoDialog::new(self.repo.clone()))),
+            other => {
+                log::warn!("Unexpected select called {:?}", other);
+                CtxResult::CloseCtx
+            }
+        };
+
+        Ok(vec![result])
     }
 
     fn handle_message(&mut self, message: Message) -> Result<Vec<CtxResult>> {

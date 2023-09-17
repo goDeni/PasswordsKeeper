@@ -4,13 +4,22 @@ use crate::{
     cipher::EncryptionKey,
     record::{Record, RecordId},
 };
-use anyhow::{Result};
-use std::{result::Result as StdResult, fmt::{Debug, Display}};
+use anyhow::Result;
+use std::{
+    fmt::{Debug, Display},
+    result::Result as StdResult,
+};
 use thiserror::Error;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Error)]
 pub struct RecordDoesntExist;
 pub type UpdateResult<T> = StdResult<T, RecordDoesntExist>;
+
+impl Display for RecordDoesntExist {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "RecordDoesntExist")
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RecordAlreadyExist;

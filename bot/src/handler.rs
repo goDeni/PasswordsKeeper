@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error, marker::PhantomData};
+use std::{collections::HashMap, error::Error, future::IntoFuture, marker::PhantomData};
 
 use sec_store::repository::RecordsRepository;
 use teloxide::{
@@ -16,7 +16,7 @@ use teloxide::{
     },
     Bot,
 };
-use tokio::sync::RwLock;
+use tokio::{sync::RwLock, task::JoinSet};
 
 use crate::{
     stated_dialogues::{hello::HelloDialogue, CtxResult, DialContext, MessageFormat, MessageId},
@@ -157,11 +157,13 @@ async fn process_ctx_results<F: RepositoriesFactory<R>, R: RecordsRepository>(
                 );
                 let mut sent_messages_ids: Vec<MessageId> = Vec::new();
                 for msg in messages {
-                    bot.send_message(user_id, msg.text())
-                        .parse_mode(match msg.format {
-                            MessageFormat::Text => ParseMode::MarkdownV2,
-                            MessageFormat::Html => ParseMode::Html,
-                        })
+                    let send_request = bot.send_message(user_id, msg.text());
+                    let send_request = match msg.format {
+                        MessageFormat::Html => send_request.parse_mode(ParseMode::Html),
+                        MessageFormat::Text => send_request,
+                    };
+
+                    send_request
                         .await
                         .map(|msg| sent_messages_ids.push(msg.id.into()))?;
                 }
@@ -183,14 +185,13 @@ async fn process_ctx_results<F: RepositoriesFactory<R>, R: RecordsRepository>(
                         .map(|(payload, text)| InlineKeyboardButton::callback(text, payload))
                         .collect::<Vec<InlineKeyboardButton>>()
                 }));
-                let sent_message = bot
-                    .send_message(user_id, msg.text())
-                    .parse_mode(match msg.format {
-                        MessageFormat::Html => ParseMode::Html,
-                        MessageFormat::Text => ParseMode::MarkdownV2,
-                    })
-                    .reply_markup(markup)
-                    .await?;
+                let send_message = bot.send_message(user_id, msg.text());
+                let send_message = match msg.format {
+                    MessageFormat::Html => send_message.parse_mode(ParseMode::Html),
+                    MessageFormat::Text => send_message,
+                };
+
+                let sent_message = send_message.reply_markup(markup).await?;
                 context
                     .read()
                     .await
@@ -206,8 +207,19 @@ async fn process_ctx_results<F: RepositoriesFactory<R>, R: RecordsRepository>(
                     "Results processing ({user_id}): removing {} messages",
                     messages_ids.len()
                 );
-                for message_id in messages_ids {
-                    bot.delete_message(user_id, message_id.into()).await?;
+
+                let mut set = JoinSet::new();
+                messages_ids
+                    .into_iter()
+                    .map(|msg_id| bot.delete_message(user_id, msg_id.into()).into_future())
+                    .for_each(|future| {
+                        set.spawn(future);
+                    });
+
+                while let Some(res) = set.join_next().await {
+                    if let Err(err) = res.unwrap() {
+                        log::error!("Failed message deletion: {}", err);
+                    }
                 }
             }
             CtxResult::Nothing => {}

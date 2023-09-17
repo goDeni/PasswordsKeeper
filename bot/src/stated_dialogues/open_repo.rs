@@ -59,31 +59,25 @@ where
     }
 
     fn handle_message(&mut self, message: Message) -> Result<Vec<CtxResult>> {
-        let result: CtxResult = match (&message.user_id, message.text) {
+        let result = match (&message.user_id, message.text) {
             (Some(user_id), Some(passwd)) => {
                 match self
                     .factory
                     .get_user_repository(&user_id.clone().into(), passwd)
                 {
-                    Ok(repo) => CtxResult::NewCtx(Box::new(ViewRepoDialog::new(repo))),
-                    Err(RepositoryOpenError::WrongPassword) => {
-                        CtxResult::Messages(
-                            vec!["Пароль не подходит 🤨. Попробуйте еще раз".into()],
-                        )
-                    }
-                    Err(RepositoryOpenError::DoesntExist) => CtxResult::NewCtx(Box::new(
+                    Ok(repo) => Ok(CtxResult::NewCtx(Box::new(ViewRepoDialog::new(repo)))),
+                    Err(RepositoryOpenError::WrongPassword) => Ok(CtxResult::Messages(vec![
+                        "Пароль не подходит 🤨. Попробуйте еще раз".into(),
+                    ])),
+                    Err(RepositoryOpenError::DoesntExist) => Ok(CtxResult::NewCtx(Box::new(
                         HelloDialogue::new(user_id.clone(), self.factory.clone()),
-                    )),
-                    Err(RepositoryOpenError::UnexpectedError) => {
-                        log::error!("Unexpected error an attempt open repository for {user_id}");
-                        CtxResult::Messages(vec![
-                            "Не удалось открыть репозиторий. Непредвиденная ошибка 🥵".into(),
-                        ])
-                    }
+                    ))),
+                    Err(error) => Err(error),
                 }
             }
-            _ => CtxResult::Nothing,
-        };
+            _ => Ok(CtxResult::Nothing),
+        }?;
+
         Ok(vec![CtxResult::RemoveMessages(vec![message.id]), result])
     }
 

@@ -4,8 +4,9 @@ use crate::{
     cipher::EncryptionKey,
     record::{Record, RecordId},
 };
-use anyhow::Result;
-use std::{result::Result as StdResult, fmt::Debug};
+use anyhow::{Result};
+use std::{result::Result as StdResult, fmt::{Debug, Display}};
+use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RecordDoesntExist;
@@ -17,11 +18,21 @@ pub type AddResult<T> = StdResult<T, RecordAlreadyExist>;
 
 pub type OpenResult<T> = Result<T, RepositoryOpenError>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Error)]
 pub enum RepositoryOpenError {
     WrongPassword,
     DoesntExist,
     UnexpectedError,
+}
+
+impl Display for RepositoryOpenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RepositoryOpenError::WrongPassword => write!(f, "WrongPassword"),
+            RepositoryOpenError::DoesntExist => write!(f, "DoesntExist"),
+            RepositoryOpenError::UnexpectedError => write!(f, "UnexpectedError"),
+        }
+    }
 }
 
 pub trait RecordsRepository: Debug + Clone + Sync + Send + 'static {

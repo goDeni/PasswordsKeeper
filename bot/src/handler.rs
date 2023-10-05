@@ -6,7 +6,8 @@ use teloxide::{
         dialogue::{GetChatId, InMemStorage},
         DpHandlerDescription, HandlerExt, UpdateFilterExt,
     },
-    dptree,
+    dptree, filter_command,
+    macros::BotCommands,
     payloads::SendMessageSetters,
     prelude::{DependencyMap, Handler},
     requests::Requester,
@@ -28,6 +29,15 @@ use std::sync::Arc;
 pub enum BotState {
     #[default]
     Default,
+}
+
+#[derive(BotCommands, Clone)]
+#[command(rename_rule = "lowercase")]
+enum Command {
+    #[command(description = "Remove and initialize dialog")]
+    Reset,
+    #[command(description = "Stop hotifications sending")]
+    Close,
 }
 
 pub struct BotContext<F: RepositoriesFactory<R>, R: RecordsRepository> {
@@ -57,15 +67,25 @@ async fn initialize_dialog_ctx<F: RepositoriesFactory<R>, R: RecordsRepository>(
     user_id: UserId,
 ) -> Vec<CtxResult> {
     log::debug!("Creating new dialogue with {user_id}...");
+
     let mut wctx = context.write().await;
     let factory = wctx.factory.clone();
     let mut dial = HelloDialogue::<F, R>::new(user_id.into(), factory);
-    let result = dial.init().expect("Failed dialogue initialize");
-
-    wctx.dial_ctxs.insert(user_id, RwLock::new(Box::new(dial)));
+    let new_ctx_results = dial.init().expect("Failed dialogue initialize");
+    let old_ctx_results = wctx
+        .dial_ctxs
+        .insert(user_id, RwLock::new(Box::new(dial)))
+        .map(|old_ctx| {
+            log::debug!("Shutting down old dialog context");
+            old_ctx.try_write().unwrap().shutdown().unwrap()
+        })
+        .unwrap_or(vec![]);
     log::debug!("New dialogue with {user_id} created!");
 
-    return result;
+    old_ctx_results
+        .into_iter()
+        .chain(new_ctx_results.into_iter())
+        .collect()
 }
 
 async fn process_ctx_results<F: RepositoriesFactory<R>, R: RecordsRepository>(
@@ -222,7 +242,7 @@ async fn process_ctx_results<F: RepositoriesFactory<R>, R: RecordsRepository>(
                     }
                 }
             }
-            CtxResult::Nothing => {}
+            CtxResult::Nothing => continue,
             CtxResult::CloseCtx => unreachable!(),
             CtxResult::NewCtx(_) => unreachable!(),
         }
@@ -290,11 +310,31 @@ pub async fn default_callback_handler<F: RepositoriesFactory<R>, R: RecordsRepos
     process_ctx_results(user_id, context, bot, ctx_results).await
 }
 
+async fn handle_reset_command<F: RepositoriesFactory<R>, R: RecordsRepository>(
+    bot: Bot,
+    msg: Message,
+    context: Arc<RwLock<BotContext<F, R>>>,
+) -> HandlerResult {
+    log::debug!(
+        "Handling reset command. chat_id={} from={:?}",
+        msg.chat.id,
+        msg.from().map(|f| f.id)
+    );
+    let user_id = msg.from().unwrap().id;
+
+    let ctx_results: Vec<CtxResult> = initialize_dialog_ctx(&context, user_id).await;
+    process_ctx_results(user_id, context, bot, ctx_results).await
+}
+
 pub fn build_handler<F: RepositoriesFactory<R>, R: RecordsRepository>(
 ) -> Handler<'static, DependencyMap, Result<(), Box<dyn Error + Send + Sync>>, DpHandlerDescription>
 {
+    let commands_handler = filter_command::<Command, _>()
+        .branch(dptree::case![Command::Reset].endpoint(handle_reset_command::<F, R>));
+
     let messages_hanler = Update::filter_message()
         .enter_dialogue::<Message, InMemStorage<BotState>, BotState>()
+        .branch(commands_handler)
         .endpoint(main_state_handler::<F, R>);
 
     let callbacks_hanlder = Update::filter_callback_query()

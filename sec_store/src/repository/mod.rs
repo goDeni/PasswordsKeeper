@@ -27,11 +27,11 @@ pub type AddResult<T> = StdResult<T, RecordAlreadyExist>;
 
 pub type OpenResult<T> = Result<T, RepositoryOpenError>;
 
-#[derive(Debug, Clone, PartialEq, Error)]
+#[derive(Debug, Error)]
 pub enum RepositoryOpenError {
     WrongPassword,
     DoesntExist,
-    UnexpectedError,
+    OpenError(anyhow::Error),
 }
 
 impl Display for RepositoryOpenError {
@@ -39,13 +39,16 @@ impl Display for RepositoryOpenError {
         match self {
             RepositoryOpenError::WrongPassword => write!(f, "WrongPassword"),
             RepositoryOpenError::DoesntExist => write!(f, "DoesntExist"),
-            RepositoryOpenError::UnexpectedError => write!(f, "UnexpectedError"),
+            RepositoryOpenError::OpenError(err) => {
+                write!(f, "OpenError({}, {})", err, err.root_cause())
+            }
         }
     }
 }
 
 pub trait RecordsRepository: Debug + Clone + Sync + Send + 'static {
-    fn save(&self) -> Result<()>;
+    fn cancel(&mut self) -> Result<()>;
+    fn save(&mut self) -> Result<()>;
     fn get_records(&self) -> Vec<&Record>;
     fn get(&mut self, record_id: &RecordId) -> Option<&Record>;
     fn update(&mut self, record: Record) -> UpdateResult<()>;

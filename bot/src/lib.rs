@@ -4,8 +4,9 @@ use stated_dialogues::Select;
 
 pub mod handler;
 pub mod reps_store;
-pub mod stated_dialogues;
+pub mod dialogues;
 pub mod user_repo_factory;
+pub mod stated_dialogues;
 
 impl Into<stated_dialogues::MessageId> for teloxide::types::MessageId {
     fn into(self) -> stated_dialogues::MessageId {

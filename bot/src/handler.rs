@@ -1,5 +1,6 @@
 use std::{collections::HashMap, error::Error, future::IntoFuture, marker::PhantomData};
 
+use anyhow::Context;
 use sec_store::repository::RecordsRepository;
 use teloxide::{
     dispatching::{
@@ -19,10 +20,8 @@ use teloxide::{
 };
 use tokio::{sync::RwLock, task::JoinSet};
 
-use crate::{
-    stated_dialogues::{hello::HelloDialogue, CtxResult, DialContext, MessageFormat, MessageId},
-    user_repo_factory::RepositoriesFactory,
-};
+use crate::stated_dialogues::{CtxResult, DialContext, MessageFormat, MessageId};
+use crate::{dialogues::hello::HelloDialogue, user_repo_factory::RepositoriesFactory};
 use std::sync::Arc;
 
 #[derive(Clone, Default, Debug)]
@@ -60,19 +59,23 @@ where
     }
 }
 
-pub type HandlerResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
+type AnyResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
+pub type HandlerResult = AnyResult<()>;
 
 async fn initialize_dialog_ctx<F: RepositoriesFactory<R>, R: RecordsRepository>(
     context: &RwLock<BotContext<F, R>>,
     user_id: UserId,
-) -> Vec<CtxResult> {
+) -> AnyResult<Vec<CtxResult>> {
     log::debug!("Creating new dialogue with {user_id}...");
 
-    let mut wctx = context.write().await;
-    let factory = wctx.factory.clone();
-    let mut dial = HelloDialogue::<F, R>::new(user_id.into(), factory);
-    let new_ctx_results = dial.init().expect("Failed dialogue initialize");
-    let old_ctx_results = wctx
+    let mut ctx_wlock = context.write().await;
+
+    let mut dial = HelloDialogue::<F, R>::new(user_id.into(), ctx_wlock.factory.clone());
+    let new_ctx_results = dial
+        .init()
+        .with_context(|| format!("Faled dialog initialization for {}", user_id))?;
+
+    let old_ctx_results = ctx_wlock
         .dial_ctxs
         .insert(user_id, RwLock::new(Box::new(dial)))
         .map(|old_ctx| {
@@ -82,10 +85,10 @@ async fn initialize_dialog_ctx<F: RepositoriesFactory<R>, R: RecordsRepository>(
         .unwrap_or(vec![]);
     log::debug!("New dialogue with {user_id} created!");
 
-    old_ctx_results
+    Ok(old_ctx_results
         .into_iter()
         .chain(new_ctx_results.into_iter())
-        .collect()
+        .collect())
 }
 
 async fn process_ctx_results<F: RepositoriesFactory<R>, R: RecordsRepository>(
@@ -103,7 +106,7 @@ async fn process_ctx_results<F: RepositoriesFactory<R>, R: RecordsRepository>(
                 break;
             }
             log::debug!("Results processing ({user_id}): the user was left dialog context");
-            buckets.push(initialize_dialog_ctx(&context, user_id).await);
+            buckets.push(initialize_dialog_ctx(&context, user_id).await?);
         }
 
         let mut bucket = buckets.remove(0);
@@ -118,48 +121,55 @@ async fn process_ctx_results<F: RepositoriesFactory<R>, R: RecordsRepository>(
             continue;
         }
 
-        let mut new_bucket: Vec<CtxResult> = vec![];
-        match bucket.remove(0) {
-            CtxResult::NewCtx(new_ctx) => {
-                if let Some(old_ctx) = context
-                    .write()
-                    .await
-                    .dial_ctxs
-                    .insert(user_id, RwLock::new(new_ctx))
-                {
+        let mut ctx_wlock = context.write().await;
+        let mut new_bucket = match bucket.remove(0) {
+            CtxResult::NewCtx(mut new_ctx) => {
+                log::debug!("Results processing ({user_id}): New ctx intialization");
+                let mut ctx_results = new_ctx
+                    .init()
+                    .with_context(|| format!("Failed new context initialization {}", user_id))?;
+                if let Some(old_ctx) = ctx_wlock.dial_ctxs.insert(user_id, RwLock::new(new_ctx)) {
                     log::debug!("Results processing ({user_id}): calling shutdown for old ctx...");
-                    new_bucket.extend(
+                    ctx_results.extend(
                         old_ctx
-                            .write()
-                            .await
+                            .try_write()
+                            .with_context(|| {
+                                format!("Failed old context write lock getting for {}", user_id)
+                            })?
                             .shutdown()
-                            .expect(format!("Failed ctx shutdown for {}", user_id).as_str()),
+                            .with_context(|| {
+                                format!("Failed old context shutdown for {}", user_id)
+                            })?,
                     );
                     log::debug!("Results processing ({user_id}): old ctx finished");
-                }
-                log::debug!("Results processing ({user_id}): New ctx intialization");
-                new_bucket.extend(
-                    context
-                        .read()
-                        .await
-                        .dial_ctxs
-                        .get(&user_id)
-                        .unwrap()
-                        .write()
-                        .await
-                        .init()
-                        .expect(format!("Failed new context initialization {}", user_id).as_str()),
-                );
+                };
                 log::debug!("Results processing ({user_id}): New ctx initialized");
+
+                ctx_results
             }
             CtxResult::CloseCtx => {
                 log::debug!("Results processing ({user_id}): close dialog context");
-                if let Some(ctx) = context.write().await.dial_ctxs.remove(&user_id) {
-                    new_bucket.extend(ctx.write().await.shutdown().unwrap());
+                if let Some(ctx) = ctx_wlock.dial_ctxs.remove(&user_id) {
+                    ctx.try_write()
+                        .with_context(|| {
+                            format!(
+                                "Failed write lock getting during context closing for {}",
+                                user_id
+                            )
+                        })?
+                        .shutdown()
+                        .with_context(|| {
+                            format!(
+                                "Failed context shutdown during context closing for {}",
+                                user_id
+                            )
+                        })?
+                } else {
+                    vec![]
                 }
             }
             _ => unreachable!(),
-        }
+        };
         new_bucket.extend(bucket);
         buckets.push(new_bucket);
     }
@@ -168,6 +178,20 @@ async fn process_ctx_results<F: RepositoriesFactory<R>, R: RecordsRepository>(
         "Results processing ({user_id}): executing {} results...",
         new_ctx_results.len()
     );
+
+    let ctx_rlock = context.read().await;
+    let mut dial_ctx = ctx_rlock
+        .dial_ctxs
+        .get(&user_id)
+        .with_context(|| {
+            format!(
+                "Dialog context for messages processing doesn't exist?! (user_id={})",
+                user_id
+            )
+        })?
+        .write()
+        .await;
+
     for ctx_result in new_ctx_results {
         match ctx_result {
             CtxResult::Messages(messages) => {
@@ -187,15 +211,7 @@ async fn process_ctx_results<F: RepositoriesFactory<R>, R: RecordsRepository>(
                         .await
                         .map(|msg| sent_messages_ids.push(msg.id.into()))?;
                 }
-                context
-                    .read()
-                    .await
-                    .dial_ctxs
-                    .get(&user_id)
-                    .unwrap()
-                    .write()
-                    .await
-                    .remember_sent_messages(sent_messages_ids);
+                dial_ctx.remember_sent_messages(sent_messages_ids);
             }
             CtxResult::Buttons(msg, selector) => {
                 log::debug!("Results processing ({user_id}): sending keyboard");
@@ -212,15 +228,7 @@ async fn process_ctx_results<F: RepositoriesFactory<R>, R: RecordsRepository>(
                 };
 
                 let sent_message = send_message.reply_markup(markup).await?;
-                context
-                    .read()
-                    .await
-                    .dial_ctxs
-                    .get(&user_id)
-                    .unwrap()
-                    .write()
-                    .await
-                    .remember_sent_messages(vec![sent_message.id.into()]);
+                dial_ctx.remember_sent_messages(vec![sent_message.id.into()]);
             }
             CtxResult::RemoveMessages(messages_ids) => {
                 log::debug!(
@@ -237,7 +245,7 @@ async fn process_ctx_results<F: RepositoriesFactory<R>, R: RecordsRepository>(
                     });
 
                 while let Some(res) = set.join_next().await {
-                    if let Err(err) = res.unwrap() {
+                    if let Err(err) = res? {
                         log::error!("Failed message deletion: {}", err);
                     }
                 }
@@ -266,14 +274,14 @@ pub async fn main_state_handler<F: RepositoriesFactory<R>, R: RecordsRepository>
     let mut ctx_results: Vec<CtxResult> = vec![];
 
     if !context.read().await.dial_ctxs.contains_key(&user_id) {
-        ctx_results.extend(initialize_dialog_ctx(&context, user_id).await);
+        ctx_results.extend(initialize_dialog_ctx(&context, user_id).await?);
     }
     {
         let rctx = context.read().await;
         let mut dial = rctx.dial_ctxs.get(&user_id).unwrap().write().await;
         ctx_results.extend(
             dial.handle_message(msg.into())
-                .expect(&format!("({}): Failed input handling", user_id)),
+                .with_context(|| format!("Failed input handling (user_id={})", user_id))?,
         );
     }
 
@@ -296,7 +304,7 @@ pub async fn default_callback_handler<F: RepositoriesFactory<R>, R: RecordsRepos
 
     if !context.read().await.dial_ctxs.contains_key(&user_id) {
         log::debug!("Callback ({user_id}): dialog context not found");
-        ctx_results.extend(initialize_dialog_ctx(&context, user_id).await);
+        ctx_results.extend(initialize_dialog_ctx(&context, user_id).await?);
     }
 
     log::debug!("Callback ({user_id}): Handling \"{:?}\"", query.data);
@@ -322,8 +330,11 @@ async fn handle_reset_command<F: RepositoriesFactory<R>, R: RecordsRepository>(
     );
     let user_id = msg.from().unwrap().id;
 
-    let ctx_results: Vec<CtxResult> = initialize_dialog_ctx(&context, user_id).await;
-    process_ctx_results(user_id, context, bot, ctx_results).await
+    let ctx_results: Vec<CtxResult> = initialize_dialog_ctx(&context, user_id).await?;
+    process_ctx_results(user_id, context, bot.clone(), ctx_results).await?;
+
+    bot.delete_message(user_id, msg.id).await?;
+    Ok(())
 }
 
 pub fn build_handler<F: RepositoriesFactory<R>, R: RecordsRepository>(

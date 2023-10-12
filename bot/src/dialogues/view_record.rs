@@ -1,14 +1,13 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-use sec_store::{
-    record::{Record, RecordId},
-    repository::RecordsRepository,
-};
+use sec_store::{record::RecordId, repository::RecordsRepository};
 
 use super::{
-    common::{RECORD_DESCR_FIELD, RECORD_LOGIN_FIELD, RECORD_NAME_FIELD, RECORD_PASSWD_FIELD},
-    view_repo::ViewRepoDialog,
-    CtxResult, DialContext, Message, MessageFormat, MessageId, OutgoingMessage, Select,
+    common::record_as_message, edit_record::EditRecordDialog, view_repo::ViewRepoDialog,
+};
+use crate::stated_dialogues::{
+    CtxResult,
+    DialContext, Message, MessageId, Select,
 };
 use anyhow::Result;
 
@@ -28,32 +27,6 @@ impl<T> ViewRecordDialog<T> {
     }
 }
 
-fn record_as_message(record: &Record) -> String {
-    let fields: HashMap<String, String> = HashMap::from_iter(
-        record
-            .get_fields()
-            .into_iter()
-            .map(|(name, value)| (name.clone(), value.clone())),
-    );
-
-    let mut lines: Vec<String> = vec![format!(
-        "Название: <code>{}</code>",
-        fields[RECORD_NAME_FIELD]
-    )];
-    if let Some(login) = fields.get(RECORD_LOGIN_FIELD) {
-        lines.push(format!("Логин: <code>{}</code>", login));
-    }
-    if let Some(descr) = fields.get(RECORD_DESCR_FIELD) {
-        lines.push(format!("Описание: <code>{}</code>", descr));
-    }
-
-    lines.push(format!(
-        "Пароль: <code>{}</code>",
-        fields[RECORD_PASSWD_FIELD]
-    ));
-    lines.join("\n")
-}
-
 const EDIT_RECORD: &'static str = "EDIT_RECORD";
 const REMOVE_RECORD: &'static str = "REMOVE_RECORD";
 const CLOSE_VIEW: &'static str = "CLOSE_VIEW";
@@ -65,7 +38,7 @@ where
     fn init(&mut self) -> Result<Vec<CtxResult>> {
         let result: CtxResult = match self.repo.get(&self.record_id) {
             Some(record) => CtxResult::Buttons(
-                OutgoingMessage::new(record_as_message(&record), MessageFormat::Html),
+                record_as_message(&record),
                 vec![
                     vec![(EDIT_RECORD.into(), "✏️".into())],
                     vec![(REMOVE_RECORD.into(), "❌".into())],
@@ -86,7 +59,10 @@ where
 
     fn handle_select(&mut self, select: Select) -> Result<Vec<CtxResult>> {
         let result = match select.data() {
-            Some(EDIT_RECORD) => CtxResult::Nothing,
+            Some(EDIT_RECORD) => CtxResult::NewCtx(Box::new(EditRecordDialog::new(
+                self.record_id.clone(),
+                self.repo.clone(),
+            ))),
             Some(REMOVE_RECORD) => {
                 self.repo.delete(&self.record_id)?;
                 self.repo.save()?;

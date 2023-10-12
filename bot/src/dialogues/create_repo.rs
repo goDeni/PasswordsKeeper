@@ -5,9 +5,8 @@ use sec_store::repository::RecordsRepository;
 use crate::user_repo_factory::RepositoriesFactory;
 use anyhow::Result;
 
-use super::{
-    open_repo::OpenRepoDialogue, CtxResult, DialContext, DialogState, Message, MessageId, Select,
-};
+use super::open_repo::OpenRepoDialogue;
+use crate::stated_dialogues::{CtxResult, DialContext, Message, MessageId, Select};
 
 #[derive(Clone)]
 enum CreationState {
@@ -18,7 +17,6 @@ enum CreationState {
 
 pub struct CreateRepoDialogue<F, R> {
     factory: F,
-    state: DialogState,
     creation_state: CreationState,
     sent_msg_ids: HashSet<MessageId>,
     //
@@ -29,7 +27,6 @@ impl<F, R> CreateRepoDialogue<F, R> {
     pub fn new(factory: F) -> Self {
         CreateRepoDialogue {
             factory,
-            state: DialogState::IDLE,
             creation_state: CreationState::Disabled,
             sent_msg_ids: HashSet::new(),
             phantom: PhantomData,
@@ -84,7 +81,7 @@ where
                     .factory
                     .initialize_user_repository(&user_id.clone().into(), passwd)
                 {
-                    Ok(repo) => {
+                    Ok(mut repo) => {
                         repo.save().map_err(|err| {
                             log::error!("Failed repository saving for {user_id}: {err}");
                             err

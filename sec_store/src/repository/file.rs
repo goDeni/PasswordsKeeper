@@ -1,7 +1,9 @@
 use std::fs::File;
+use std::io::Write;
 use std::{collections::HashMap, path::PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
+use tempfile::NamedTempFile;
 use uuid::Uuid;
 
 use crate::cipher::{decrypt_string, encrypt_string, DecryptionError, EncryptedData};
@@ -25,6 +27,7 @@ pub struct RecordsFileRepository {
     file: PathBuf,
     passwd: EncryptionKey,
     records: RecordsMap,
+    saved_records: RecordsMap,
 }
 pub struct OpenRecordsFileRepository(pub PathBuf);
 
@@ -34,10 +37,11 @@ struct RawRepositoryJson(EncryptedData, Vec<EncryptedRecord>);
 impl RecordsFileRepository {
     pub fn new(file: PathBuf, passwd: EncryptionKey) -> RecordsFileRepository {
         RecordsFileRepository {
-            file: file,
+            file,
             records: HashMap::new(),
-            passwd: passwd,
+            passwd,
             identifier: Uuid::new_v4().to_string(),
+            saved_records: HashMap::new(),
         }
     }
 }
@@ -48,20 +52,26 @@ impl OpenRepository<RecordsFileRepository> for OpenRecordsFileRepository {
             return Err(RepositoryOpenError::DoesntExist);
         }
 
-        match File::open(self.0.clone()) {
-            Err(_) => Err(RepositoryOpenError::UnexpectedError),
+        match File::open(self.0.clone())
+            .with_context(|| format!("Failed file open {:?}", self.0.to_str()))
+        {
+            Err(err) => Err(RepositoryOpenError::OpenError(err)),
             Ok(file) => {
-                let raw_rep = serde_json::from_reader::<File, RawRepositoryJson>(file).unwrap();
+                let raw_rep = serde_json::from_reader::<File, RawRepositoryJson>(file)
+                    .with_context(|| format!("Failed file {:?} deserealisation", self.0.to_str()))
+                    .map_err(|err| RepositoryOpenError::OpenError(err))?;
 
                 match decrypt_string(&passwd, raw_rep.0) {
                     Err(DecryptionError::WrongPassword) => Err(RepositoryOpenError::WrongPassword),
-                    Err(DecryptionError::UnexpectedError) => {
-                        Err(RepositoryOpenError::UnexpectedError)
+                    Err(DecryptionError::EncodingError(err)) => {
+                        Err(RepositoryOpenError::OpenError(anyhow!(
+                            "Got encoding error \"{}\" for file \"{:?}\"",
+                            err,
+                            self.0.to_str()
+                        )))
                     }
-                    Ok(identifier) => Ok(RecordsFileRepository {
-                        file: self.0,
-                        identifier: identifier,
-                        records: HashMap::from_iter(
+                    Ok(identifier) => {
+                        let records = HashMap::from_iter(
                             raw_rep
                                 .1
                                 .iter()
@@ -69,9 +79,15 @@ impl OpenRepository<RecordsFileRepository> for OpenRecordsFileRepository {
                                     Record::decrypt(&passwd, encrypted_record).unwrap()
                                 })
                                 .map(|record| (record.id.clone(), record)),
-                        ),
-                        passwd: passwd,
-                    }),
+                        );
+                        Ok(RecordsFileRepository {
+                            file: self.0,
+                            identifier,
+                            passwd,
+                            records: records.clone(),
+                            saved_records: records,
+                        })
+                    }
                 }
             }
         }
@@ -79,13 +95,15 @@ impl OpenRepository<RecordsFileRepository> for OpenRecordsFileRepository {
 }
 
 impl RecordsRepository for RecordsFileRepository {
-    fn save(&self) -> Result<()> {
+    fn cancel(&mut self) -> Result<()> {
+        self.records = self.saved_records.clone();
+        Ok(())
+    }
+
+    fn save(&mut self) -> Result<()> {
+        let mut tmp_file = NamedTempFile::new()?;
         serde_json::to_writer(
-            File::options()
-                .create(true)
-                .write(true)
-                .open(&self.file)
-                .with_context(|| format!("Failed file open: {:?}", self.file))?,
+            &tmp_file,
             &RawRepositoryJson(
                 encrypt_string(&self.passwd, self.identifier.clone()),
                 self.records
@@ -94,7 +112,14 @@ impl RecordsRepository for RecordsFileRepository {
                     .collect::<Vec<EncryptedRecord>>(),
             ),
         )
-        .with_context(|| format!("Failed json writing {:?}", self.file))
+        .with_context(|| format!("Failed json writing {:?}", self.file))?;
+
+        tmp_file.flush()?;
+        tmp_file.persist(self.file.as_path())?;
+
+        self.saved_records = self.records.clone();
+
+        Ok(())
     }
 
     fn get_records(&self) -> Vec<&Record> {
@@ -252,7 +277,7 @@ mod tests {
     fn test_repository_open_with_wrong_passwd() {
         let tmp_dir = TempDir::new("test_").unwrap();
 
-        let repo = RecordsFileRepository::new(
+        let mut repo = RecordsFileRepository::new(
             tmp_dir.path().join("repo_file"),
             "One password".to_string(),
         );
@@ -261,7 +286,11 @@ mod tests {
         let result = OpenRecordsFileRepository(repo.file)
             .open("Wrong passwd".to_string())
             .unwrap_err();
-        assert_eq!(result, RepositoryOpenError::WrongPassword);
+
+        match result {
+            RepositoryOpenError::WrongPassword => assert!(true),
+            _ => unreachable!(),
+        }
 
         tmp_dir.close().unwrap();
     }
@@ -273,7 +302,10 @@ mod tests {
             .open("Wrong passwd".to_string())
             .unwrap_err();
 
-        assert_eq!(result, RepositoryOpenError::DoesntExist);
+        match result {
+            RepositoryOpenError::DoesntExist => assert!(true),
+            _ => unreachable!(),
+        }
 
         tmp_dir.close().unwrap();
     }

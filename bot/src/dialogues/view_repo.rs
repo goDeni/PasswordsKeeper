@@ -2,6 +2,9 @@ use std::collections::HashSet;
 
 use super::{
     add_record::AddRecordDialog, common::RECORD_NAME_FIELD, view_record::ViewRecordDialog,
+    
+};
+use crate::stated_dialogues::{
     ButtonPayload, CtxResult, DialContext, Message, MessageId, Select,
 };
 use anyhow::Result;
@@ -37,7 +40,7 @@ where
                 (
                     record.id.clone(),
                     record
-                        .get_field_value(&RECORD_NAME_FIELD.into())
+                        .get_field_value(RECORD_NAME_FIELD)
                         .unwrap_or("-".to_string()),
                 )
             })

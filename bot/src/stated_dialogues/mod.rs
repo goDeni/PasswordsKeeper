@@ -1,20 +1,5 @@
-mod add_record;
-mod common;
-mod create_repo;
-mod open_repo;
-mod view_record;
-mod view_repo;
-
-pub mod hello;
-
 use anyhow::Result;
 use std::fmt::{Debug, Display};
-
-enum DialogState {
-    WaitForInput,
-    WaitForSelect,
-    IDLE,
-}
 
 #[derive(Debug, PartialEq)]
 pub enum MessageFormat {
@@ -95,8 +80,8 @@ impl Into<String> for UserId {
 #[derive(Clone)]
 pub struct Message {
     pub id: MessageId,
-    text: Option<String>,
-    user_id: Option<UserId>,
+    pub text: Option<String>,
+    pub user_id: Option<UserId>,
 }
 
 impl Message {
@@ -115,7 +100,7 @@ impl Message {
 pub struct Select {
     pub msg_id: Option<MessageId>,
     pub data: Option<String>,
-    user_id: UserId,
+    pub user_id: UserId,
 }
 impl Select {
     pub fn new(msg_id: Option<MessageId>, data: Option<String>, user_id: UserId) -> Self {
@@ -135,7 +120,7 @@ impl Select {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct ButtonPayload(String);
+pub struct ButtonPayload(pub String);
 impl Into<String> for ButtonPayload {
     fn into(self) -> String {
         self.0

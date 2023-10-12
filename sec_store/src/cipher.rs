@@ -12,7 +12,7 @@ pub type DecryptResult<T> = Result<T, DecryptionError>;
 #[derive(Debug, Clone, PartialEq)]
 pub enum DecryptionError {
     WrongPassword,
-    UnexpectedError,
+    EncodingError(std::string::FromUtf8Error),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -49,7 +49,7 @@ pub fn decrypt_string(
         return Err(DecryptionError::WrongPassword);
     }
 
-    String::from_utf8(encrypted_data.data).map_err(|_error| DecryptionError::UnexpectedError)
+    String::from_utf8(encrypted_data.data).map_err(|err| DecryptionError::EncodingError(err))
 }
 
 #[test]

@@ -77,7 +77,7 @@ mod tests {
 
         let factory = FileRepositoriesFactory(tmp_dir.into_path());
 
-        let repo = factory
+        let mut repo = factory
             .initialize_user_repository(&user_id, passwd.clone())
             .unwrap();
         repo.save().unwrap();
@@ -106,6 +106,9 @@ mod tests {
             .get_user_repository(&user_id, "312".to_string())
             .unwrap_err();
 
-        assert_eq!(result, RepositoryOpenError::WrongPassword);
+        match result {
+            RepositoryOpenError::WrongPassword => assert!(true),
+            _ => unreachable!(),
+        }
     }
 }

@@ -6,14 +6,15 @@ use crate::user_repo_factory::RepositoriesFactory;
 use anyhow::Result;
 
 use super::{
-    create_repo::CreateRepoDialogue, open_repo::OpenRepoDialogue, ButtonPayload, CtxResult,
-    DialContext, DialogState, Message, MessageId, Select, UserId,
+    create_repo::CreateRepoDialogue, open_repo::OpenRepoDialogue,
 };
+
+use crate::stated_dialogues::{ButtonPayload, CtxResult,
+    DialContext, Message, MessageId, Select, UserId};
 
 pub struct HelloDialogue<T, R> {
     user_id: UserId,
     factory: T,
-    state: DialogState,
     sent_msg_ids: HashSet<MessageId>,
     //
     phantom: PhantomData<R>,
@@ -24,7 +25,6 @@ impl<T, R> HelloDialogue<T, R> {
         HelloDialogue {
             user_id,
             factory,
-            state: DialogState::IDLE,
             sent_msg_ids: HashSet::new(),
             //
             phantom: PhantomData,

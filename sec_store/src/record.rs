@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use thiserror::Error;
 use uuid::Uuid;
 
 use crate::cipher::{decrypt_string, encrypt_string, DecryptResult, EncryptedData, EncryptionKey};
@@ -11,8 +12,9 @@ pub type FieldValue = String;
 pub type RecordField = (FieldName, FieldValue);
 
 pub type UpdateFieldResult<T> = anyhow::Result<T, FieldDoesntExist>;
-#[derive(Debug, Clone, PartialEq)]
-pub struct FieldDoesntExist;
+#[derive(Debug, Clone, PartialEq, Error)]
+#[error("Field {0} doesn't exist")]
+pub struct FieldDoesntExist(String);
 
 pub type AddFieldResult<T> = anyhow::Result<T, SameFieldAlreadyExist>;
 #[derive(Debug, Clone, PartialEq)]
@@ -52,7 +54,7 @@ impl Record {
         self.fields.iter().map(|(a, b)| (a, b)).collect()
     }
 
-    pub fn get_field_value(&self, field_name: &FieldName) -> Option<FieldValue> {
+    pub fn get_field_value(&self, field_name: &str) -> Option<FieldValue> {
         self.fields
             .iter()
             .find(|(name, _)| name.eq(field_name))
@@ -75,7 +77,7 @@ impl Record {
                 self.fields[idx] = (field_name, field_value);
                 Ok(())
             }
-            None => Err(FieldDoesntExist),
+            None => Err(FieldDoesntExist(field_name)),
         }
     }
 
@@ -183,6 +185,6 @@ mod tests {
 
         let result = record.update_field("Field2".to_string(), "Value2".to_string());
 
-        assert_eq!(result, Err(crate::record::FieldDoesntExist));
+        assert_eq!(result, Err(crate::record::FieldDoesntExist("Field2".to_string())));
     }
 }

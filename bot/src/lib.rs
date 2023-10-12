@@ -3,7 +3,6 @@
 use stated_dialogues::Select;
 
 pub mod handler;
-pub mod reps_store;
 pub mod dialogues;
 pub mod user_repo_factory;
 pub mod stated_dialogues;

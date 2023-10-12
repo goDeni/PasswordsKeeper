@@ -1,11 +1,8 @@
-mod file;
+pub mod file;
 
 use anyhow::Result;
 
-use sec_store::{
-    cipher::EncryptionKey,
-    repository::{OpenResult, RecordsRepository},
-};
+use sec_store::{cipher::EncryptionKey, repository::OpenResult};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RepositoryAlreadyExist;
@@ -17,16 +14,13 @@ pub enum GetReposityError {
     UnexpectedError,
 }
 
-pub type UserId = &'static str;
-pub trait RepositoriesFactory<T>
-where
-    T: RecordsRepository,
-{
-    fn user_has_repository(&self, user_id: UserId) -> bool;
-    fn get_user_repository(&self, user_id: UserId, passwd: EncryptionKey) -> OpenResult<T>;
+pub type UserId = String;
+pub trait RepositoriesFactory<T>: Clone + Sync + Send + 'static {
+    fn user_has_repository(&self, user_id: &UserId) -> bool;
+    fn get_user_repository(&self, user_id: &UserId, passwd: EncryptionKey) -> OpenResult<T>;
     fn initialize_user_repository(
         &self,
-        user_id: UserId,
+        user_id: &UserId,
         passwd: EncryptionKey,
     ) -> InitRepoResult<T>;
 }

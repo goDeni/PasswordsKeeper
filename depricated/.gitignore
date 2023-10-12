@@ -1,8 +1,0 @@
-*.pyc
-.env
-.pytest_cache
-.venv
-.vscode
-__pycache__
-dist
-poetry.lock

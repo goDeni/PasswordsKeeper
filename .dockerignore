@@ -1,0 +1,4 @@
+**/.env
+**/.passwords_keeper_bot_data
+**/Cargo.lock
+**/target/

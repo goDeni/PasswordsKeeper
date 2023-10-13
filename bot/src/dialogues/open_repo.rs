@@ -5,9 +5,9 @@ use crate::user_repo_factory::RepositoriesFactory;
 
 use super::hello::HelloDialogue;
 use super::view_repo::ViewRepoDialog;
+use crate::stated_dialogues::{CtxResult, DialContext, Message, MessageId, Select, UserId};
 use anyhow::Result;
 use sec_store::repository::{RecordsRepository, RepositoryOpenError};
-use crate::stated_dialogues::{CtxResult, DialContext, Message, MessageId, Select, UserId};
 
 pub struct OpenRepoDialogue<F, R> {
     factory: F,

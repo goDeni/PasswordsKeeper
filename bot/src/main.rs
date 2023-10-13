@@ -18,7 +18,7 @@ async fn main() {
         }
     }
     pretty_env_logger::formatted_timed_builder()
-        .parse_filters(&std::env::var(&"RUST_LOG").unwrap_or("DEBUG".to_string()))
+        .parse_filters(&std::env::var("RUST_LOG").unwrap_or("DEBUG".to_string()))
         .init();
 
     let data_path = Path::new("./.passwords_keeper_bot_data");

@@ -1,7 +1,15 @@
 run:
     cd bot && cargo run
 
-test:
+format:
+    cd bot && cargo fmt && cargo clippy --fix --allow-dirty
+    cd sec_store && cargo fmt && cargo clippy --fix --allow-dirty
+
+lint:
+    cd bot && cargo fmt --check && cargo clippy
+    cd sec_store && cargo fmt --check && cargo clippy
+
+test: lint
     cd bot && cargo test
     cd sec_store && cargo test
 

@@ -59,7 +59,7 @@ impl OpenRepository<RecordsFileRepository> for OpenRecordsFileRepository {
             Ok(file) => {
                 let raw_rep = serde_json::from_reader::<File, RawRepositoryJson>(file)
                     .with_context(|| format!("Failed file {:?} deserealisation", self.0.to_str()))
-                    .map_err(|err| RepositoryOpenError::OpenError(err))?;
+                    .map_err(RepositoryOpenError::OpenError)?;
 
                 match decrypt_string(&passwd, raw_rep.0) {
                     Err(DecryptionError::WrongPassword) => Err(RepositoryOpenError::WrongPassword),
@@ -287,11 +287,7 @@ mod tests {
             .open("Wrong passwd".to_string())
             .unwrap_err();
 
-        match result {
-            RepositoryOpenError::WrongPassword => assert!(true),
-            _ => unreachable!(),
-        }
-
+        assert!(matches!(result, RepositoryOpenError::WrongPassword));
         tmp_dir.close().unwrap();
     }
 
@@ -302,11 +298,7 @@ mod tests {
             .open("Wrong passwd".to_string())
             .unwrap_err();
 
-        match result {
-            RepositoryOpenError::DoesntExist => assert!(true),
-            _ => unreachable!(),
-        }
-
+        assert!(matches!(result, RepositoryOpenError::DoesntExist));
         tmp_dir.close().unwrap();
     }
 }

@@ -5,12 +5,11 @@ use sec_store::repository::RecordsRepository;
 use crate::user_repo_factory::RepositoriesFactory;
 use anyhow::Result;
 
-use super::{
-    create_repo::CreateRepoDialogue, open_repo::OpenRepoDialogue,
-};
+use super::{create_repo::CreateRepoDialogue, open_repo::OpenRepoDialogue};
 
-use crate::stated_dialogues::{ButtonPayload, CtxResult,
-    DialContext, Message, MessageId, Select, UserId};
+use crate::stated_dialogues::{
+    ButtonPayload, CtxResult, DialContext, Message, MessageId, Select, UserId,
+};
 
 pub struct HelloDialogue<T, R> {
     user_id: UserId,
@@ -32,8 +31,8 @@ impl<T, R> HelloDialogue<T, R> {
     }
 }
 
-const CREATE_REPO: &'static str = "1";
-const OPEN_REPO: &'static str = "2";
+const CREATE_REPO: &str = "1";
+const OPEN_REPO: &str = "2";
 
 impl<F, R> DialContext for HelloDialogue<F, R>
 where

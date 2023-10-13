@@ -18,25 +18,25 @@ impl OutgoingMessage {
     }
 
     pub fn text(&self) -> &str {
-        return &self.text;
+        &self.text
     }
 }
 
-impl Into<OutgoingMessage> for String {
-    fn into(self) -> OutgoingMessage {
-        OutgoingMessage::new(self, MessageFormat::Text)
+impl From<String> for OutgoingMessage {
+    fn from(val: String) -> Self {
+        OutgoingMessage::new(val, MessageFormat::Text)
     }
 }
 
-impl Into<OutgoingMessage> for &str {
-    fn into(self) -> OutgoingMessage {
-        OutgoingMessage::new(self.into(), MessageFormat::Text)
+impl From<&str> for OutgoingMessage {
+    fn from(val: &str) -> Self {
+        OutgoingMessage::new(val.into(), MessageFormat::Text)
     }
 }
 
-impl Into<String> for OutgoingMessage {
-    fn into(self) -> String {
-        self.text
+impl From<OutgoingMessage> for String {
+    fn from(val: OutgoingMessage) -> Self {
+        val.text
     }
 }
 
@@ -71,9 +71,9 @@ impl Display for UserId {
         write!(f, "{}", self.0)
     }
 }
-impl Into<String> for UserId {
-    fn into(self) -> String {
-        self.0
+impl From<UserId> for String {
+    fn from(val: UserId) -> Self {
+        val.0
     }
 }
 
@@ -121,19 +121,19 @@ impl Select {
 
 #[derive(Debug, PartialEq)]
 pub struct ButtonPayload(pub String);
-impl Into<String> for ButtonPayload {
-    fn into(self) -> String {
-        self.0
+impl From<ButtonPayload> for String {
+    fn from(val: ButtonPayload) -> Self {
+        val.0
     }
 }
-impl Into<ButtonPayload> for String {
-    fn into(self) -> ButtonPayload {
-        ButtonPayload(self)
+impl From<String> for ButtonPayload {
+    fn from(val: String) -> Self {
+        ButtonPayload(val)
     }
 }
-impl Into<ButtonPayload> for &str {
-    fn into(self) -> ButtonPayload {
-        self.to_string().into()
+impl From<&str> for ButtonPayload {
+    fn from(val: &str) -> Self {
+        val.to_string().into()
     }
 }
 

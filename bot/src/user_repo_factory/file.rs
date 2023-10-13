@@ -28,7 +28,7 @@ impl RepositoriesFactory<RecordsFileRepository> for FileRepositoriesFactory {
         user_id: &UserId,
         passwd: EncryptionKey,
     ) -> OpenResult<RecordsFileRepository> {
-        match OpenRecordsFileRepository(self.get_repository_path(&user_id)).open(passwd) {
+        match OpenRecordsFileRepository(self.get_repository_path(user_id)).open(passwd) {
             Ok(rep) => Ok(rep),
             Err(err) => Err(err),
         }
@@ -38,7 +38,7 @@ impl RepositoriesFactory<RecordsFileRepository> for FileRepositoriesFactory {
         user_id: &UserId,
         passwd: EncryptionKey,
     ) -> InitRepoResult<RecordsFileRepository> {
-        match self.user_has_repository(&user_id) {
+        match self.user_has_repository(user_id) {
             true => Err(RepositoryAlreadyExist),
             false => Ok(RecordsFileRepository::new(
                 self.get_repository_path(user_id),
@@ -106,9 +106,6 @@ mod tests {
             .get_user_repository(&user_id, "312".to_string())
             .unwrap_err();
 
-        match result {
-            RepositoryOpenError::WrongPassword => assert!(true),
-            _ => unreachable!(),
-        }
+        assert!(matches!(result, RepositoryOpenError::WrongPassword));
     }
 }

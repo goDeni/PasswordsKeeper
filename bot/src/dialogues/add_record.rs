@@ -7,9 +7,9 @@ use super::common::{
     RECORD_DESCR_FIELD, RECORD_LOGIN_FIELD, RECORD_NAME_FIELD, RECORD_PASSWD_FIELD,
 };
 use super::view_repo::ViewRepoDialog;
-use anyhow::Result;
 use crate::stated_dialogues::DialContext;
 use crate::stated_dialogues::{CtxResult, Message, MessageId, Select};
+use anyhow::Result;
 
 #[derive(Clone)]
 struct NewRecord {
@@ -30,29 +30,29 @@ impl NewRecord {
     }
 }
 
-impl Into<Record> for NewRecord {
-    fn into(self) -> Record {
+impl From<NewRecord> for Record {
+    fn from(val: NewRecord) -> Self {
         let mut fields: Vec<(String, String)> = vec![
-            (RECORD_NAME_FIELD.into(), self.name),
-            (RECORD_PASSWD_FIELD.into(), self.passwd),
+            (RECORD_NAME_FIELD.into(), val.name),
+            (RECORD_PASSWD_FIELD.into(), val.passwd),
         ];
-        if let Some(login) = self.login {
+        if let Some(login) = val.login {
             fields.push((RECORD_LOGIN_FIELD.into(), login))
         }
-        if let Some(description) = self.description {
+        if let Some(description) = val.description {
             fields.push((RECORD_DESCR_FIELD.into(), description))
         }
 
-        return Record::new(fields);
+        Record::new(fields)
     }
 }
 
 #[derive(Clone)]
 enum AddRecordState {
-    WaitValue,
-    WaitName(String),
-    WaitLogin(NewRecord),
-    WaitDescription(NewRecord),
+    Value,
+    Name(String),
+    Login(NewRecord),
+    Description(NewRecord),
 }
 
 pub struct AddRecordDialog<T> {
@@ -65,7 +65,7 @@ impl<T> AddRecordDialog<T> {
     pub fn new(repo: T) -> Self {
         AddRecordDialog {
             repo,
-            state: AddRecordState::WaitValue,
+            state: AddRecordState::Value,
             sent_msg_ids: HashSet::new(),
         }
     }
@@ -95,20 +95,20 @@ where
     fn handle_message(&mut self, message: Message) -> Result<Vec<CtxResult>> {
         let result: CtxResult = match message.text {
             Some(text) => match self.state.clone() {
-                AddRecordState::WaitValue => {
-                    self.state = AddRecordState::WaitName(text);
+                AddRecordState::Value => {
+                    self.state = AddRecordState::Name(text);
                     CtxResult::Messages(vec!["Введите название".into()])
                 }
-                AddRecordState::WaitName(passwd) => {
-                    self.state = AddRecordState::WaitLogin(NewRecord::new(text, passwd));
+                AddRecordState::Name(passwd) => {
+                    self.state = AddRecordState::Login(NewRecord::new(text, passwd));
                     CtxResult::Messages(vec!["Введите логин".into()])
                 }
-                AddRecordState::WaitLogin(mut new_record) => {
+                AddRecordState::Login(mut new_record) => {
                     new_record.login = Some(text);
-                    self.state = AddRecordState::WaitDescription(new_record);
+                    self.state = AddRecordState::Description(new_record);
                     CtxResult::Messages(vec!["Введите описание".into()])
                 }
-                AddRecordState::WaitDescription(mut new_record) => {
+                AddRecordState::Description(mut new_record) => {
                     new_record.description = Some(text);
                     self.repo.add_record(new_record.into()).unwrap();
                     self.repo.save().map_err(|err| {

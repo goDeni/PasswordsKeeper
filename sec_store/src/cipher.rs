@@ -49,7 +49,7 @@ pub fn decrypt_string(
         return Err(DecryptionError::WrongPassword);
     }
 
-    String::from_utf8(encrypted_data.data).map_err(|err| DecryptionError::EncodingError(err))
+    String::from_utf8(encrypted_data.data).map_err(DecryptionError::EncodingError)
 }
 
 #[test]
@@ -70,7 +70,7 @@ fn test_encryption_data() {
     let encrypted_data = encrypt_string(&passwd, plaintext.clone());
 
     let result = String::from_utf8(encrypted_data.data);
-    if let Some(result_str) = result.ok() {
+    if let Ok(result_str) = result {
         assert_ne!(result_str, plaintext);
     }
 }

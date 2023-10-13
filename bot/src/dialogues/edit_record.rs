@@ -12,11 +12,8 @@ use super::{
     },
     view_record::ViewRecordDialog,
     view_repo::ViewRepoDialog,
-    
 };
-use crate::stated_dialogues::{
-    ButtonPayload, CtxResult, DialContext, Message, MessageId, Select,
-};
+use crate::stated_dialogues::{ButtonPayload, CtxResult, DialContext, Message, MessageId, Select};
 
 use anyhow::{anyhow, Context, Result};
 

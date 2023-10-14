@@ -2,45 +2,46 @@
 
 use stated_dialogues::Select;
 
-pub mod handler;
 pub mod dialogues;
-pub mod user_repo_factory;
+pub mod dialogues_controller;
+pub mod handler;
 pub mod stated_dialogues;
+pub mod user_repo_factory;
 
-impl Into<stated_dialogues::MessageId> for teloxide::types::MessageId {
-    fn into(self) -> stated_dialogues::MessageId {
-        stated_dialogues::MessageId(self.0)
+impl From<teloxide::types::MessageId> for stated_dialogues::MessageId {
+    fn from(val: teloxide::types::MessageId) -> Self {
+        stated_dialogues::MessageId(val.0)
     }
 }
 
-impl Into<teloxide::types::MessageId> for stated_dialogues::MessageId {
-    fn into(self) -> teloxide::types::MessageId {
-        teloxide::types::MessageId(self.0)
+impl From<stated_dialogues::MessageId> for teloxide::types::MessageId {
+    fn from(val: stated_dialogues::MessageId) -> Self {
+        teloxide::types::MessageId(val.0)
     }
 }
 
-impl Into<stated_dialogues::UserId> for teloxide::types::UserId {
-    fn into(self) -> stated_dialogues::UserId {
-        stated_dialogues::UserId(self.0.to_string())
+impl From<teloxide::types::UserId> for stated_dialogues::UserId {
+    fn from(val: teloxide::types::UserId) -> Self {
+        stated_dialogues::UserId(val.0.to_string())
     }
 }
 
-impl Into<stated_dialogues::Message> for teloxide::types::Message {
-    fn into(self) -> stated_dialogues::Message {
+impl From<teloxide::types::Message> for stated_dialogues::Message {
+    fn from(val: teloxide::types::Message) -> Self {
         stated_dialogues::Message::new(
-            self.id.into(),
-            self.text().map(|t| t.to_string()),
-            self.from().map(|user| user.id.into()),
+            val.id.into(),
+            val.text().map(|t| t.to_string()),
+            val.from().map(|user| user.id.into()),
         )
     }
 }
 
-impl Into<stated_dialogues::Select> for teloxide::types::CallbackQuery {
-    fn into(self) -> stated_dialogues::Select {
+impl From<teloxide::types::CallbackQuery> for stated_dialogues::Select {
+    fn from(val: teloxide::types::CallbackQuery) -> Self {
         Select::new(
-            self.message.map(|msg| msg.id.into()),
-            self.data,
-            self.from.id.into(),
+            val.message.map(|msg| msg.id.into()),
+            val.data,
+            val.from.id.into(),
         )
     }
 }

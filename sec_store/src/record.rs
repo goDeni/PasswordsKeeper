@@ -32,7 +32,7 @@ impl Record {
     pub fn new(fields: Vec<RecordField>) -> Record {
         Record {
             id: Uuid::new_v4().to_string(),
-            fields: fields,
+            fields,
         }
     }
 
@@ -185,6 +185,9 @@ mod tests {
 
         let result = record.update_field("Field2".to_string(), "Value2".to_string());
 
-        assert_eq!(result, Err(crate::record::FieldDoesntExist("Field2".to_string())));
+        assert_eq!(
+            result,
+            Err(crate::record::FieldDoesntExist("Field2".to_string()))
+        );
     }
 }

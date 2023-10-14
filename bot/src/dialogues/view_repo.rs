@@ -2,16 +2,13 @@ use std::collections::HashSet;
 
 use super::{
     add_record::AddRecordDialog, common::RECORD_NAME_FIELD, view_record::ViewRecordDialog,
-    
 };
-use crate::stated_dialogues::{
-    ButtonPayload, CtxResult, DialContext, Message, MessageId, Select,
-};
+use crate::stated_dialogues::{ButtonPayload, CtxResult, DialContext, Message, MessageId, Select};
 use anyhow::Result;
 use sec_store::repository::RecordsRepository;
 
-const CLOSE_REPO: &'static str = "CLOSE_REPO";
-const ADD_RECORD: &'static str = "ADD_RECORD";
+const CLOSE_REPO: &str = "CLOSE_REPO";
+const ADD_RECORD: &str = "ADD_RECORD";
 
 pub struct ViewRepoDialog<T> {
     repo: T,

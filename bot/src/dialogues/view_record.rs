@@ -2,13 +2,8 @@ use std::collections::HashSet;
 
 use sec_store::{record::RecordId, repository::RecordsRepository};
 
-use super::{
-    common::record_as_message, edit_record::EditRecordDialog, view_repo::ViewRepoDialog,
-};
-use crate::stated_dialogues::{
-    CtxResult,
-    DialContext, Message, MessageId, Select,
-};
+use super::{common::record_as_message, edit_record::EditRecordDialog, view_repo::ViewRepoDialog};
+use crate::stated_dialogues::{CtxResult, DialContext, Message, MessageId, Select};
 use anyhow::Result;
 
 pub struct ViewRecordDialog<T> {
@@ -27,9 +22,9 @@ impl<T> ViewRecordDialog<T> {
     }
 }
 
-const EDIT_RECORD: &'static str = "EDIT_RECORD";
-const REMOVE_RECORD: &'static str = "REMOVE_RECORD";
-const CLOSE_VIEW: &'static str = "CLOSE_VIEW";
+const EDIT_RECORD: &str = "EDIT_RECORD";
+const REMOVE_RECORD: &str = "REMOVE_RECORD";
+const CLOSE_VIEW: &str = "CLOSE_VIEW";
 
 impl<T> DialContext for ViewRecordDialog<T>
 where
@@ -38,7 +33,7 @@ where
     fn init(&mut self) -> Result<Vec<CtxResult>> {
         let result: CtxResult = match self.repo.get(&self.record_id) {
             Some(record) => CtxResult::Buttons(
-                record_as_message(&record),
+                record_as_message(record),
                 vec![
                     vec![(EDIT_RECORD.into(), "✏️".into())],
                     vec![(REMOVE_RECORD.into(), "❌".into())],

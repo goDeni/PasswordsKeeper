@@ -6,13 +6,16 @@ use sec_store::{
 };
 
 use super::{
-    common::{
+    fields::{
         record_as_message, RECORD_DESCR_FIELD, RECORD_LOGIN_FIELD, RECORD_NAME_FIELD,
         RECORD_PASSWD_FIELD,
     },
     view_record::ViewRecordDialog,
 };
-use crate::{stated_dialogues::{ButtonPayload, CtxResult, DialContext, Message, MessageId, Select}, dialogues::repository::view_repo::ViewRepoDialog};
+use crate::{
+    dialogues::repository::view_repo::ViewRepoDialog,
+    stated_dialogues::{ButtonPayload, CtxResult, DialContext, Message, MessageId, Select},
+};
 
 use anyhow::{anyhow, Context, Result};
 

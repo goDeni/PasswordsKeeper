@@ -1,4 +1,4 @@
-pub mod common;
+pub mod fields;
 
 pub mod add_record;
 pub mod edit_record;

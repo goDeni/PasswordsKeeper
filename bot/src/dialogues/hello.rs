@@ -9,7 +9,7 @@ use crate::stated_dialogues::{
     ButtonPayload, CtxResult, DialContext, Message, MessageId, Select, UserId,
 };
 
-use super::repository::{open_repo::OpenRepoDialogue, create_repo::CreateRepoDialogue};
+use super::repository::{create_repo::CreateRepoDialogue, open_repo::OpenRepoDialogue};
 
 pub struct HelloDialogue<T, R> {
     user_id: UserId,

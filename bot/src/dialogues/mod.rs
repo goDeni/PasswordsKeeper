@@ -1,2 +1,2 @@
-mod repository;
 pub mod hello;
+mod repository;

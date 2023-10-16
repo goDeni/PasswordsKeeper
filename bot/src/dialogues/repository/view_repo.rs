@@ -4,7 +4,9 @@ use crate::stated_dialogues::{ButtonPayload, CtxResult, DialContext, Message, Me
 use anyhow::Result;
 use sec_store::repository::RecordsRepository;
 
-use super::records::{common::RECORD_NAME_FIELD, add_record::AddRecordDialog, view_record::ViewRecordDialog};
+use super::records::{
+    add_record::AddRecordDialog, fields::RECORD_NAME_FIELD, view_record::ViewRecordDialog,
+};
 
 const CLOSE_REPO: &str = "CLOSE_REPO";
 const ADD_RECORD: &str = "ADD_RECORD";

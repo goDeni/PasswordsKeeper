@@ -2,8 +2,11 @@ use std::collections::HashSet;
 
 use sec_store::{record::RecordId, repository::RecordsRepository};
 
-use super::{common::record_as_message, edit_record::EditRecordDialog};
-use crate::{stated_dialogues::{CtxResult, DialContext, Message, MessageId, Select}, dialogues::repository::view_repo::ViewRepoDialog};
+use super::{edit_record::EditRecordDialog, fields::record_as_message};
+use crate::{
+    dialogues::repository::view_repo::ViewRepoDialog,
+    stated_dialogues::{CtxResult, DialContext, Message, MessageId, Select},
+};
 use anyhow::Result;
 
 pub struct ViewRecordDialog<T> {

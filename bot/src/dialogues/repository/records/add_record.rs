@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use sec_store::record::Record;
 use sec_store::repository::RecordsRepository;
 
-use super::common::{
+use super::fields::{
     RECORD_DESCR_FIELD, RECORD_LOGIN_FIELD, RECORD_NAME_FIELD, RECORD_PASSWD_FIELD,
 };
 use crate::dialogues::repository::view_repo::ViewRepoDialog;

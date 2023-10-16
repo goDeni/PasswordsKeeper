@@ -11,9 +11,8 @@ use super::{
         RECORD_PASSWD_FIELD,
     },
     view_record::ViewRecordDialog,
-    view_repo::ViewRepoDialog,
 };
-use crate::stated_dialogues::{ButtonPayload, CtxResult, DialContext, Message, MessageId, Select};
+use crate::{stated_dialogues::{ButtonPayload, CtxResult, DialContext, Message, MessageId, Select}, dialogues::repository::view_repo::ViewRepoDialog};
 
 use anyhow::{anyhow, Context, Result};
 

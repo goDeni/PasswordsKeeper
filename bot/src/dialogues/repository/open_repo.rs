@@ -3,7 +3,6 @@ use std::marker::PhantomData;
 
 use crate::user_repo_factory::RepositoriesFactory;
 
-use super::hello::HelloDialogue;
 use super::view_repo::ViewRepoDialog;
 use crate::stated_dialogues::{CtxResult, DialContext, Message, MessageId, Select, UserId};
 use anyhow::{Context, Result};
@@ -73,9 +72,7 @@ where
                         Err(RepositoryOpenError::WrongPassword) => Ok(CtxResult::Messages(vec![
                             "Пароль не подходит 🤨. Попробуйте еще раз".into(),
                         ])),
-                        Err(RepositoryOpenError::DoesntExist) => Ok(CtxResult::NewCtx(Box::new(
-                            HelloDialogue::new(user_id.clone(), self.factory.clone()),
-                        ))),
+                        Err(RepositoryOpenError::DoesntExist) => Ok(CtxResult::CloseCtx),
                         Err(error) => Err(error),
                     }
                 }

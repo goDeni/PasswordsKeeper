@@ -52,6 +52,11 @@ impl DialogueController {
         ))
     }
 
+    pub fn shutdown(mut self) -> Result<Vec<CtxResult>> {
+        let results = self.context.shutdown()?;
+        process_context_results(self.context, results).map(|(_, ctx_results)| ctx_results)
+    }
+
     pub fn remember_sent_messages(&mut self, msg_ids: Vec<MessageId>) {
         self.context.remember_sent_messages(msg_ids)
     }

@@ -1,17 +1,16 @@
-FROM --platform=$BUILDPLATFORM rust:1.73 as build_stage
+FROM --platform=$BUILDPLATFORM rust:1-alpine3.18 as build_stage
 
 WORKDIR /build
 
 COPY ./bot ./bot
 COPY ./sec_store ./sec_store
 
+RUN apk add pkgconfig openssl musl-dev libressl-dev
 RUN cd bot && \
     cargo fetch --verbose && \
     cargo build --verbose --offline --release
 
-FROM --platform=$BUILDPLATFORM debian:bullseye-slim as final_image
-RUN apt-get update \
-    && apt-get install ca-certificates -y
+FROM --platform=$BUILDPLATFORM alpine:3.18.4 as final_image
 
 COPY \
     --from=build_stage \

@@ -101,7 +101,11 @@ impl RecordsRepository for RecordsFileRepository {
     }
 
     fn save(&mut self) -> Result<()> {
-        let mut tmp_file = NamedTempFile::new()?;
+        let mut tmp_file = NamedTempFile::new_in(
+            self.file
+                .parent()
+                .with_context(|| format!("Failed get parent directory for {:?}", self.file))?,
+        )?;
         serde_json::to_writer(
             &tmp_file,
             &RawRepositoryJson(

@@ -30,7 +30,7 @@ where
     T: RecordsRepository,
 {
     fn init(&mut self) -> Result<Vec<CtxResult>> {
-        let records_buttons = self
+        let mut records_buttons = self
             .repo
             .get_records()
             .into_iter()
@@ -44,6 +44,11 @@ where
             })
             .map(|(id, name)| vec![(id.into(), name)])
             .collect::<Vec<Vec<(ButtonPayload, String)>>>();
+        records_buttons.sort_by(|a, b| {
+            a.is_empty()
+                .then(|| a.len().cmp(&b.len()))
+                .unwrap_or_else(|| a[0].1.cmp(&b[0].1))
+        });
 
         let records_count = records_buttons.len();
         let mut buttons = records_buttons;

@@ -3,10 +3,10 @@ use std::collections::HashSet;
 use sec_store::record::Record;
 use sec_store::repository::RecordsRepository;
 
-use super::common::{
+use super::fields::{
     RECORD_DESCR_FIELD, RECORD_LOGIN_FIELD, RECORD_NAME_FIELD, RECORD_PASSWD_FIELD,
 };
-use super::view_repo::ViewRepoDialog;
+use crate::dialogues::repository::view_repo::ViewRepoDialog;
 use crate::stated_dialogues::DialContext;
 use crate::stated_dialogues::{CtxResult, Message, MessageId, Select};
 use anyhow::Result;

@@ -64,6 +64,11 @@ impl Debug for CtxResult {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MessageId(pub i32);
+impl Display for MessageId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 #[derive(Clone, Debug)]
 pub struct UserId(pub String);
 impl Display for UserId {

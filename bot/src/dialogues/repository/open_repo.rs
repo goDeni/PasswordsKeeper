@@ -3,10 +3,9 @@ use std::marker::PhantomData;
 
 use crate::user_repo_factory::RepositoriesFactory;
 
-use super::hello::HelloDialogue;
 use super::view_repo::ViewRepoDialog;
 use crate::stated_dialogues::{CtxResult, DialContext, Message, MessageId, Select, UserId};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use sec_store::repository::{RecordsRepository, RepositoryOpenError};
 
 pub struct OpenRepoDialogue<F, R> {
@@ -52,9 +51,19 @@ where
 
     fn handle_message(&mut self, message: Message) -> Result<Vec<CtxResult>> {
         Ok(vec![
-            CtxResult::RemoveMessages(self.sent_msg_ids.drain().chain(vec![message.id]).collect()),
-            match (&message.user_id, message.text) {
-                (Some(user_id), Some(passwd)) => {
+            CtxResult::RemoveMessages(
+                self.sent_msg_ids
+                    .drain()
+                    .chain(vec![message.id.clone()])
+                    .collect(),
+            ),
+            match (
+                message
+                    .user_id
+                    .with_context(|| format!("Message without user_id msg_id={}", message.id,))?,
+                message.text,
+            ) {
+                (user_id, Some(passwd)) => {
                     match self
                         .factory
                         .get_user_repository(&user_id.clone().into(), passwd)
@@ -63,13 +72,13 @@ where
                         Err(RepositoryOpenError::WrongPassword) => Ok(CtxResult::Messages(vec![
                             "Пароль не подходит 🤨. Попробуйте еще раз".into(),
                         ])),
-                        Err(RepositoryOpenError::DoesntExist) => Ok(CtxResult::NewCtx(Box::new(
-                            HelloDialogue::new(user_id.clone(), self.factory.clone()),
-                        ))),
+                        Err(RepositoryOpenError::DoesntExist) => Ok(CtxResult::CloseCtx),
                         Err(error) => Err(error),
                     }
                 }
-                _ => Ok(CtxResult::Nothing),
+                _ => Ok(CtxResult::Messages(vec![
+                    "Это не пароль 🤨. Попробуйте еще раз".into(),
+                ])),
             }?,
         ])
     }

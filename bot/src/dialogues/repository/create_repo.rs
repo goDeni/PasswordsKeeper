@@ -3,7 +3,7 @@ use std::{collections::HashSet, marker::PhantomData};
 use sec_store::repository::RecordsRepository;
 
 use crate::user_repo_factory::RepositoriesFactory;
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use super::open_repo::OpenRepoDialogue;
 use crate::stated_dialogues::{CtxResult, DialContext, Message, MessageId, Select};
@@ -55,8 +55,14 @@ where
     }
 
     fn handle_message(&mut self, message: Message) -> Result<Vec<CtxResult>> {
-        match (message.user_id, message.text, self.creation_state.clone()) {
-            (Some(_), Some(input), CreationState::WaitForPassword) => {
+        match (
+            message
+                .user_id
+                .with_context(|| format!("Got message without user_id msg_id={}", message.id))?,
+            message.text,
+            self.creation_state.clone(),
+        ) {
+            (_, Some(input), CreationState::WaitForPassword) => {
                 if input.is_empty() {
                     return Ok(vec![
                         CtxResult::RemoveMessages(vec![message.id]),
@@ -69,7 +75,7 @@ where
                     CtxResult::Messages(vec!["Повторите пароль".into()]),
                 ])
             }
-            (Some(user_id), Some(input), CreationState::WaitPasswordRepeat(passwd)) => {
+            (user_id, Some(input), CreationState::WaitPasswordRepeat(passwd)) => {
                 if passwd.ne(&input) {
                     return Ok(vec![
                         CtxResult::RemoveMessages(vec![message.id]),
@@ -109,10 +115,7 @@ where
                     }
                 }
             }
-            _ => Ok(vec![
-                CtxResult::RemoveMessages(vec![message.id]),
-                CtxResult::Messages(vec!["?".into()]),
-            ]),
+            _ => Ok(vec![CtxResult::RemoveMessages(vec![message.id])]),
         }
     }
 

@@ -1,11 +1,12 @@
 use std::collections::HashSet;
 
-use super::{
-    add_record::AddRecordDialog, common::RECORD_NAME_FIELD, view_record::ViewRecordDialog,
-};
 use crate::stated_dialogues::{ButtonPayload, CtxResult, DialContext, Message, MessageId, Select};
 use anyhow::Result;
 use sec_store::repository::RecordsRepository;
+
+use super::records::{
+    add_record::AddRecordDialog, fields::RECORD_NAME_FIELD, view_record::ViewRecordDialog,
+};
 
 const CLOSE_REPO: &str = "CLOSE_REPO";
 const ADD_RECORD: &str = "ADD_RECORD";
@@ -29,7 +30,7 @@ where
     T: RecordsRepository,
 {
     fn init(&mut self) -> Result<Vec<CtxResult>> {
-        let records_buttons = self
+        let mut records_buttons = self
             .repo
             .get_records()
             .into_iter()
@@ -43,6 +44,11 @@ where
             })
             .map(|(id, name)| vec![(id.into(), name)])
             .collect::<Vec<Vec<(ButtonPayload, String)>>>();
+        records_buttons.sort_by(|a, b| {
+            a.is_empty()
+                .then(|| a.len().cmp(&b.len()))
+                .unwrap_or_else(|| a[0].1.cmp(&b[0].1))
+        });
 
         let records_count = records_buttons.len();
         let mut buttons = records_buttons;

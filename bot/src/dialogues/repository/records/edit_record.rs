@@ -6,14 +6,16 @@ use sec_store::{
 };
 
 use super::{
-    common::{
+    fields::{
         record_as_message, RECORD_DESCR_FIELD, RECORD_LOGIN_FIELD, RECORD_NAME_FIELD,
         RECORD_PASSWD_FIELD,
     },
     view_record::ViewRecordDialog,
-    view_repo::ViewRepoDialog,
 };
-use crate::stated_dialogues::{ButtonPayload, CtxResult, DialContext, Message, MessageId, Select};
+use crate::{
+    dialogues::repository::view_repo::ViewRepoDialog,
+    stated_dialogues::{ButtonPayload, CtxResult, DialContext, Message, MessageId, Select},
+};
 
 use anyhow::{anyhow, Context, Result};
 
@@ -122,8 +124,8 @@ where
     }
 
     fn handle_message(&mut self, message: Message) -> Result<Vec<CtxResult>> {
-        match self.state.clone() {
-            DialogState::FieldEdit(field) => {
+        match (self.state.clone(), message.text) {
+            (DialogState::FieldEdit(field), Some(msg_text)) => {
                 let mut record = self
                     .repo
                     .get(&self.record_id)
@@ -132,13 +134,7 @@ where
                     })?
                     .clone();
 
-                let field_value = message.text.with_context(|| {
-                    format!(
-                        "Missed message text msg_id={:?} record_id={} user_id={:?}",
-                        message.id, self.record_id, message.user_id
-                    )
-                })?;
-                record.update_field(field, field_value)?;
+                record.update_field(field, msg_text)?;
                 let edit_buttons = get_edit_record_buttons(&record);
 
                 self.repo.update(record)?;
@@ -153,7 +149,7 @@ where
                     edit_buttons,
                 ])
             }
-            DialogState::WaitForSelect => Ok(vec![CtxResult::RemoveMessages(vec![message.id])]),
+            _ => Ok(vec![CtxResult::RemoveMessages(vec![message.id])]),
         }
     }
 

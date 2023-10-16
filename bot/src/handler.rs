@@ -137,7 +137,9 @@ async fn handle_reset_command<F: RepositoriesFactory<R>, R: RecordsRepository>(
         msg.from().map(|f| f.id)
     );
     let user_id = msg.from().unwrap().id;
-    context.write().await.dial_ctxs.remove(&user_id);
+    if let Some(old_controller) = context.write().await.dial_ctxs.remove(&user_id) {
+        process_ctx_results(user_id, old_controller.shutdown()?, &bot).await?;
+    }
 
     handle_interaction(
         &user_id,

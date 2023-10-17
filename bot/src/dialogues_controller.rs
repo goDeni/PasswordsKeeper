@@ -1,9 +1,12 @@
+use std::time::SystemTime;
+
 use crate::stated_dialogues::{self, ButtonPayload, DialContext, MessageId, OutgoingMessage};
 use anyhow::{Context, Result};
 
 type AnyDialContext = dyn DialContext + Sync + Send;
 pub struct DialogueController {
     context: Box<AnyDialContext>,
+    last_usage_time: SystemTime,
 }
 
 pub enum DialInteraction {
@@ -29,9 +32,14 @@ impl DialogueController {
             DialogueController {
                 context: context
                     .with_context(|| "context self destroyed after initialization".to_string())?,
+                last_usage_time: SystemTime::now(),
             },
             results,
         ))
+    }
+
+    pub fn get_last_interaction_time(&self) -> &SystemTime {
+        &self.last_usage_time
     }
 
     pub fn handle(
@@ -47,7 +55,10 @@ impl DialogueController {
         let (context, results) = process_context_results(self.context, results)?;
 
         Ok((
-            context.map(|ctx| DialogueController { context: ctx }),
+            context.map(|ctx| DialogueController {
+                context: ctx,
+                last_usage_time: SystemTime::now(),
+            }),
             results,
         ))
     }

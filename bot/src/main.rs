@@ -1,7 +1,7 @@
 extern crate sec_store;
 
 use bot::{
-    handler::{build_handler, BotContext, BotState},
+    handler::{build_handler, track_dialog_ttl, BotContext, BotState},
     user_repo_factory::file::FileRepositoriesFactory,
 };
 use sec_store::repository::file::RecordsFileRepository;
@@ -30,14 +30,14 @@ async fn main() {
     let bot = Bot::from_env();
 
     let factory = FileRepositoriesFactory(data_path.to_path_buf());
+    let bot_context = Arc::new(RwLock::new(BotContext::new(factory)));
+
+    tokio::spawn(track_dialog_ttl(bot_context.clone(), bot.clone()));
     Dispatcher::builder(
         bot,
         build_handler::<FileRepositoriesFactory, RecordsFileRepository>(),
     )
-    .dependencies(dptree::deps![
-        InMemStorage::<BotState>::new(),
-        Arc::new(RwLock::new(BotContext::new(factory)))
-    ])
+    .dependencies(dptree::deps![InMemStorage::<BotState>::new(), bot_context])
     .default_handler(|upd| async move {
         log::warn!("Unhandled update: {:?}", upd);
     })

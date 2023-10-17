@@ -37,6 +37,8 @@ pub enum BotState {
 enum Command {
     #[command(description = "Remove and initialize dialog")]
     Reset,
+    #[command(description = "Cancel dialog action")]
+    Cancel,
 }
 
 pub struct BotContext<F: RepositoriesFactory<R>, R: RecordsRepository> {
@@ -66,7 +68,8 @@ pub fn build_handler<F: RepositoriesFactory<R>, R: RecordsRepository>(
 ) -> Handler<'static, DependencyMap, Result<(), Box<dyn Error + Send + Sync>>, DpHandlerDescription>
 {
     let commands_handler = filter_command::<Command, _>()
-        .branch(dptree::case![Command::Reset].endpoint(handle_reset_command::<F, R>));
+        .branch(dptree::case![Command::Reset].endpoint(handle_reset_command::<F, R>))
+        .endpoint(handle_command::<F, R>);
 
     let messages_hanler = Update::filter_message()
         .enter_dialogue::<Message, InMemStorage<BotState>, BotState>()
@@ -140,6 +143,28 @@ async fn handle_reset_command<F: RepositoriesFactory<R>, R: RecordsRepository>(
     if let Some(old_controller) = context.write().await.dial_ctxs.remove(&user_id) {
         process_ctx_results(user_id, old_controller.shutdown()?, &bot).await?;
     }
+
+    handle_interaction(
+        &user_id,
+        &bot,
+        context,
+        DialInteraction::Command(msg.clone().into()),
+    )
+    .await
+}
+
+async fn handle_command<F: RepositoriesFactory<R>, R: RecordsRepository>(
+    bot: Bot,
+    msg: Message,
+    context: Arc<RwLock<BotContext<F, R>>>,
+) -> HandlerResult {
+    log::debug!(
+        "Handling {:?} command. chat_id={} from={:?}",
+        msg.text(),
+        msg.chat.id,
+        msg.from().map(|f| f.id)
+    );
+    let user_id = msg.from().unwrap().id;
 
     handle_interaction(
         &user_id,

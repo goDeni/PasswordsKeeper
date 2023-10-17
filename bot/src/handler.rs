@@ -265,11 +265,10 @@ pub async fn track_dialog_ttl<F: RepositoriesFactory<R>, R: RecordsRepository>(
         let keys_to_remove = result
             .iter()
             .filter_map(|(user_id, duration)| {
-                if duration.as_secs().ge(&DIALOG_CONTROLLER_TTL_SECONDS) {
-                    Some(user_id)
-                } else {
-                    None
-                }
+                duration
+                    .as_secs()
+                    .ge(&DIALOG_CONTROLLER_TTL_SECONDS)
+                    .then(|| user_id)
             })
             .collect::<Vec<&UserId>>();
 

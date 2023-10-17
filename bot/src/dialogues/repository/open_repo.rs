@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::marker::PhantomData;
 
-use crate::user_repo_factory::RepositoriesFactory;
+use crate::{dialogues::commands::CANCEL_COMMAND, user_repo_factory::RepositoriesFactory};
 
 use super::view_repo::ViewRepoDialog;
 use crate::stated_dialogues::{CtxResult, DialContext, Message, MessageId, Select, UserId};
@@ -84,7 +84,13 @@ where
     }
 
     fn handle_command(&mut self, command: Message) -> Result<Vec<CtxResult>> {
-        Ok(vec![CtxResult::RemoveMessages(vec![command.id])])
+        match command.text() {
+            Some(CANCEL_COMMAND) => Ok(vec![
+                CtxResult::RemoveMessages(vec![command.id]),
+                CtxResult::CloseCtx,
+            ]),
+            _ => Ok(vec![CtxResult::RemoveMessages(vec![command.id])]),
+        }
     }
 
     fn remember_sent_messages(&mut self, msg_ids: Vec<MessageId>) {

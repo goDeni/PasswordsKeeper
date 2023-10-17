@@ -6,6 +6,7 @@ use sec_store::repository::RecordsRepository;
 use super::fields::{
     RECORD_DESCR_FIELD, RECORD_LOGIN_FIELD, RECORD_NAME_FIELD, RECORD_PASSWD_FIELD,
 };
+use crate::dialogues::commands::CANCEL_COMMAND;
 use crate::dialogues::repository::view_repo::ViewRepoDialog;
 use crate::stated_dialogues::DialContext;
 use crate::stated_dialogues::{CtxResult, Message, MessageId, Select};
@@ -129,7 +130,13 @@ where
     }
 
     fn handle_command(&mut self, command: Message) -> Result<Vec<CtxResult>> {
-        Ok(vec![CtxResult::RemoveMessages(vec![command.id])])
+        match command.text() {
+            Some(CANCEL_COMMAND) => Ok(vec![
+                CtxResult::RemoveMessages(vec![command.id]),
+                CtxResult::NewCtx(Box::new(ViewRepoDialog::new(self.repo.clone()))),
+            ]),
+            _ => Ok(vec![CtxResult::RemoveMessages(vec![command.id])]),
+        }
     }
 
     fn remember_sent_messages(&mut self, msg_ids: Vec<MessageId>) {

@@ -13,7 +13,7 @@ use super::{
     view_record::ViewRecordDialog,
 };
 use crate::{
-    dialogues::repository::view_repo::ViewRepoDialog,
+    dialogues::{commands::CANCEL_COMMAND, repository::view_repo::ViewRepoDialog},
     stated_dialogues::{ButtonPayload, CtxResult, DialContext, Message, MessageId, Select},
 };
 
@@ -154,7 +154,19 @@ where
     }
 
     fn handle_command(&mut self, command: Message) -> Result<Vec<CtxResult>> {
-        Ok(vec![CtxResult::RemoveMessages(vec![command.id])])
+        match (self.state.clone(), command.text()) {
+            (_, Some(CANCEL_COMMAND)) => {
+                self.repo.cancel()?;
+                Ok(vec![
+                    CtxResult::RemoveMessages(vec![command.id]),
+                    CtxResult::NewCtx(Box::new(EditRecordDialog::new(
+                        self.record_id.clone(),
+                        self.repo.clone(),
+                    ))),
+                ])
+            }
+            (_, _) => Ok(vec![CtxResult::RemoveMessages(vec![command.id])]),
+        }
     }
 
     fn remember_sent_messages(&mut self, msg_ids: Vec<MessageId>) {

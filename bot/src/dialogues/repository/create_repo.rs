@@ -2,7 +2,7 @@ use std::{collections::HashSet, marker::PhantomData};
 
 use sec_store::repository::RecordsRepository;
 
-use crate::user_repo_factory::RepositoriesFactory;
+use crate::{dialogues::commands::CANCEL_COMMAND, user_repo_factory::RepositoriesFactory};
 use anyhow::{Context, Result};
 
 use super::open_repo::OpenRepoDialogue;
@@ -120,7 +120,13 @@ where
     }
 
     fn handle_command(&mut self, command: Message) -> Result<Vec<CtxResult>> {
-        Ok(vec![CtxResult::RemoveMessages(vec![command.id])])
+        match command.text() {
+            Some(CANCEL_COMMAND) => Ok(vec![
+                CtxResult::RemoveMessages(vec![command.id]),
+                CtxResult::CloseCtx,
+            ]),
+            _ => Ok(vec![CtxResult::RemoveMessages(vec![command.id])]),
+        }
     }
 
     fn remember_sent_messages(&mut self, msg_ids: Vec<MessageId>) {

@@ -268,7 +268,7 @@ pub async fn track_dialog_ttl<F: RepositoriesFactory<R>, R: RecordsRepository>(
                 duration
                     .as_secs()
                     .ge(&DIALOG_CONTROLLER_TTL_SECONDS)
-                    .then(|| user_id)
+                    .then_some(user_id)
             })
             .collect::<Vec<&UserId>>();
 

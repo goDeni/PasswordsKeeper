@@ -51,7 +51,7 @@ where
     T: RecordsRepository,
 {
     fn init(&mut self) -> Result<Vec<CtxResult>> {
-        match self.repo.get(&self.record_id) {
+        match self.repo.get(&self.record_id)? {
             Some(record) => Ok(vec![get_edit_record_buttons(record)]),
             None => {
                 log::warn!(
@@ -128,7 +128,7 @@ where
             (DialogState::FieldEdit(field), Some(msg_text)) => {
                 let mut record = self
                     .repo
-                    .get(&self.record_id)
+                    .get(&self.record_id)?
                     .with_context(|| {
                         format!("Missed record {} in FieldEdit state", self.record_id)
                     })?

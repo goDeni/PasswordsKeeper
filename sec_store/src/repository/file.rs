@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::Write;
+use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
 
 use anyhow::{anyhow, Context, Result};
@@ -8,24 +9,34 @@ use uuid::Uuid;
 
 use crate::cipher::{decrypt_string, encrypt_string, DecryptionError, EncryptedData};
 use crate::record::EncryptedRecord;
+use crate::record::{Record, RecordId};
 use crate::repository::{
-    AddResult, OpenRepository, OpenResult, RecordAlreadyExist, RecordDoesntExist,
-    RecordsRepository, RepositoryOpenError, UpdateResult,
-};
-use crate::{
-    cipher::EncryptionKey,
-    record::{Record, RecordId},
+    AddResult, OpenRepository, OpenResult, RecordsRepository, RepositoryOpenError, UpdateResult,
 };
 use serde::{Deserialize, Serialize};
 
-type RepositoryId = String;
+use super::{AddRecordError, UpdateRecordError};
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RepositoryId(Arc<str>);
+impl From<String> for RepositoryId {
+    fn from(value: String) -> Self {
+        RepositoryId(value.into())
+    }
+}
+impl RepositoryId {
+    fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 type RecordsMap = HashMap<RecordId, Record>;
 
 #[derive(Debug, Clone)]
 pub struct RecordsFileRepository {
     pub identifier: RepositoryId,
     file: PathBuf,
-    passwd: EncryptionKey,
+    passwd: String,
     records: RecordsMap,
     saved_records: RecordsMap,
 }
@@ -35,19 +46,19 @@ pub struct OpenRecordsFileRepository(pub PathBuf);
 struct RawRepositoryJson(EncryptedData, Vec<EncryptedRecord>);
 
 impl RecordsFileRepository {
-    pub fn new(file: PathBuf, passwd: EncryptionKey) -> RecordsFileRepository {
+    pub fn new(file: PathBuf, passwd: String) -> RecordsFileRepository {
         RecordsFileRepository {
             file,
             records: HashMap::new(),
             passwd,
-            identifier: Uuid::new_v4().to_string(),
+            identifier: Uuid::new_v4().to_string().into(),
             saved_records: HashMap::new(),
         }
     }
 }
 
 impl OpenRepository<RecordsFileRepository> for OpenRecordsFileRepository {
-    fn open(self, passwd: EncryptionKey) -> OpenResult<RecordsFileRepository> {
+    fn open(self, passwd: String) -> OpenResult<RecordsFileRepository> {
         if !self.0.exists() {
             return Err(RepositoryOpenError::DoesntExist);
         }
@@ -82,7 +93,7 @@ impl OpenRepository<RecordsFileRepository> for OpenRecordsFileRepository {
                         );
                         Ok(RecordsFileRepository {
                             file: self.0,
-                            identifier,
+                            identifier: identifier.into(),
                             passwd,
                             records: records.clone(),
                             saved_records: records,
@@ -109,7 +120,7 @@ impl RecordsRepository for RecordsFileRepository {
         serde_json::to_writer(
             &tmp_file,
             &RawRepositoryJson(
-                encrypt_string(&self.passwd, self.identifier.clone()),
+                encrypt_string(&self.passwd, self.identifier.as_str()),
                 self.records
                     .values()
                     .map(|rec| rec.encrypt(&self.passwd))
@@ -126,12 +137,12 @@ impl RecordsRepository for RecordsFileRepository {
         Ok(())
     }
 
-    fn get_records(&self) -> Vec<&Record> {
-        self.records.values().collect()
+    fn get_records(&self) -> Result<Vec<&Record>> {
+        Ok(self.records.values().collect())
     }
 
-    fn get(&mut self, record_id: &RecordId) -> Option<&Record> {
-        self.records.get(record_id)
+    fn get(&mut self, record_id: &RecordId) -> Result<Option<&Record>> {
+        Ok(self.records.get(record_id))
     }
 
     fn update(&mut self, record: Record) -> UpdateResult<()> {
@@ -142,16 +153,24 @@ impl RecordsRepository for RecordsFileRepository {
     }
 
     fn delete(&mut self, record_id: &RecordId) -> UpdateResult<()> {
-        if self.get(record_id).is_none() {
-            return Err(RecordDoesntExist);
+        if self
+            .get(record_id)
+            .map_err(UpdateRecordError::UnxpectedError)?
+            .is_none()
+        {
+            return Err(UpdateRecordError::RecordDoesntExist);
         }
         self.records.remove(record_id);
         Ok(())
     }
 
     fn add_record(&mut self, record: Record) -> AddResult<()> {
-        if self.get(&record.id).is_some() {
-            return Err(RecordAlreadyExist);
+        if self
+            .get(&record.id)
+            .map_err(AddRecordError::UnxpectedError)?
+            .is_some()
+        {
+            return Err(AddRecordError::RecordDoesntExist);
         }
         self.records.insert(record.id.clone(), record);
         Ok(())
@@ -164,14 +183,18 @@ mod tests {
 
     use crate::{
         record::Record,
-        repository::file::{OpenRecordsFileRepository, RecordDoesntExist, RepositoryOpenError},
+        repository::{
+            file::{OpenRecordsFileRepository, RepositoryOpenError},
+            UpdateRecordError,
+        },
         repository::{OpenRepository, RecordsRepository},
     };
+    use anyhow::Result;
 
     use super::RecordsFileRepository;
 
     #[test]
-    fn test_repository_add_record() {
+    fn test_repository_add_record() -> Result<()> {
         let tmp_dir = TempDir::new("test_").unwrap();
         let file = tmp_dir.path().join("repo_file");
 
@@ -186,14 +209,16 @@ mod tests {
 
         repo.add_record(record.clone()).unwrap();
 
-        assert_eq!(repo.get(&record.id).unwrap(), &record);
-        assert_eq!(repo.get_records(), vec![&record]);
+        assert_eq!(repo.get(&record.id)?.unwrap(), &record);
+        assert_eq!(repo.get_records()?, vec![&record]);
 
         tmp_dir.close().unwrap();
+
+        Ok(())
     }
 
     #[test]
-    fn test_repository_saving() {
+    fn test_repository_saving() -> Result<()> {
         let tmp_dir = TempDir::new("test_").unwrap();
         let file = tmp_dir.path().join("repo_file");
 
@@ -212,14 +237,16 @@ mod tests {
             .open(passwd)
             .unwrap();
 
-        assert_eq!(new_repo.get_records(), repo.get_records());
+        assert_eq!(new_repo.get_records()?, repo.get_records()?);
         assert_eq!(new_repo.identifier, repo.identifier);
 
         tmp_dir.close().unwrap();
+
+        Ok(())
     }
 
     #[test]
-    fn test_repository_update_record() {
+    fn test_repository_update_record() -> Result<()> {
         let tmp_dir = TempDir::new("test_").unwrap();
         let file = tmp_dir.path().join("repo_file");
 
@@ -235,23 +262,25 @@ mod tests {
 
         repo.add_record(old_record.clone()).unwrap();
 
-        let mut new_record = repo.get(&old_record.id).unwrap().clone();
+        let mut new_record = repo.get(&old_record.id)?.unwrap().clone();
         new_record
             .add_field("Field3".to_string(), "3".to_string())
             .unwrap();
 
         repo.update(new_record.clone()).unwrap();
 
-        assert_eq!(&new_record, repo.get(&new_record.id).unwrap());
-        assert_ne!(&old_record, repo.get(&new_record.id).unwrap());
+        assert_eq!(&new_record, repo.get(&new_record.id)?.unwrap());
+        assert_ne!(&old_record, repo.get(&new_record.id)?.unwrap());
 
-        assert_eq!(repo.get_records(), vec![&new_record]);
+        assert_eq!(repo.get_records()?, vec![&new_record]);
 
         tmp_dir.close().unwrap();
+
+        Ok(())
     }
 
     #[test]
-    fn test_repository_delete_record() {
+    fn test_repository_delete_record() -> Result<()> {
         let tmp_dir = TempDir::new("test_").unwrap();
         let file = tmp_dir.path().join("repo_file");
 
@@ -268,13 +297,21 @@ mod tests {
         repo.add_record(record.clone()).unwrap();
         repo.delete(&record.id).unwrap();
 
-        assert!(repo.get(&record.id).is_none());
-        assert!(repo.get_records().is_empty());
+        assert!(repo.get(&record.id)?.is_none());
+        assert!(repo.get_records()?.is_empty());
 
-        assert_eq!(repo.update(record.clone()), Err(RecordDoesntExist));
-        assert_eq!(repo.delete(&record.id), Err(RecordDoesntExist));
+        assert!(matches!(
+            repo.update(record.clone()).unwrap_err(),
+            UpdateRecordError::RecordDoesntExist
+        ));
+        assert!(matches!(
+            repo.delete(&record.id).unwrap_err(),
+            UpdateRecordError::RecordDoesntExist
+        ));
 
         tmp_dir.close().unwrap();
+
+        Ok(())
     }
 
     #[test]

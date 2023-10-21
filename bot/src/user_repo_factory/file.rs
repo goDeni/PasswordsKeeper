@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use sec_store::{
-    cipher::EncryptionKey,
     repository::file::{OpenRecordsFileRepository, RecordsFileRepository},
     repository::{OpenRepository, OpenResult},
 };
@@ -26,7 +25,7 @@ impl RepositoriesFactory<RecordsFileRepository> for FileRepositoriesFactory {
     fn get_user_repository(
         &self,
         user_id: &UserId,
-        passwd: EncryptionKey,
+        passwd: String,
     ) -> OpenResult<RecordsFileRepository> {
         match OpenRecordsFileRepository(self.get_repository_path(user_id)).open(passwd) {
             Ok(rep) => Ok(rep),
@@ -36,7 +35,7 @@ impl RepositoriesFactory<RecordsFileRepository> for FileRepositoriesFactory {
     fn initialize_user_repository(
         &self,
         user_id: &UserId,
-        passwd: EncryptionKey,
+        passwd: String,
     ) -> InitRepoResult<RecordsFileRepository> {
         match self.user_has_repository(user_id) {
             true => Err(RepositoryAlreadyExist),

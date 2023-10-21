@@ -32,7 +32,7 @@ where
     fn init(&mut self) -> Result<Vec<CtxResult>> {
         let mut records_buttons = self
             .repo
-            .get_records()
+            .get_records()?
             .into_iter()
             .map(|record| {
                 (
@@ -74,7 +74,7 @@ where
             Some(ADD_RECORD) => {
                 CtxResult::NewCtx(Box::new(AddRecordDialog::new(self.repo.clone())))
             }
-            Some(record_id) => match self.repo.get(&record_id.to_string()) {
+            Some(record_id) => match self.repo.get(&record_id.to_string())? {
                 Some(_) => CtxResult::NewCtx(Box::new(ViewRecordDialog::new(
                     self.repo.clone(),
                     record_id.to_string(),

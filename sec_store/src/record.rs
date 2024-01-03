@@ -50,8 +50,8 @@ impl Record {
         }
     }
 
-    pub fn get_fields(&self) -> Vec<(&FieldName, &FieldValue)> {
-        self.fields.iter().map(|(a, b)| (a, b)).collect()
+    pub fn get_fields(&self) -> Vec<&(String, String)> {
+        self.fields.iter().collect()
     }
 
     pub fn get_field_value(&self, field_name: &str) -> Option<FieldValue> {
@@ -143,8 +143,8 @@ mod tests {
         assert_eq!(
             record.get_fields(),
             vec![
-                (&"Field1".to_string(), &"Value1".to_string()),
-                (&"Field2".to_string(), &"Value2".to_string()),
+                &("Field1".to_string(), "Value1".to_string()),
+                &("Field2".to_string(), "Value2".to_string()),
             ]
         )
     }
@@ -169,7 +169,7 @@ mod tests {
 
         assert_eq!(
             record.get_fields(),
-            vec![(&"Field1".to_string(), &"Value2".to_string()),]
+            vec![&("Field1".to_string(), "Value2".to_string()),]
         )
     }
 

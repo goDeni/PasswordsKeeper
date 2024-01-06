@@ -1,7 +1,7 @@
 extern crate sec_store;
 
 use bot::{
-    handler::{build_handler, track_dialog_ttl, BotContext, BotState},
+    bot::{handlers::build_handler, ttl::track_dialog_ttl, BotContext, BotState},
     user_repo_factory::file::FileRepositoriesFactory,
 };
 use sec_store::repository::file::RecordsFileRepository;

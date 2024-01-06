@@ -1,11 +1,7 @@
 use std::time::{Duration, SystemTime};
 
 use sec_store::repository::RecordsRepository;
-use teloxide::{
-    requests::Requester,
-    types::UserId,
-    Bot,
-};
+use teloxide::{requests::Requester, types::UserId, Bot};
 use tokio::{sync::RwLock, time::sleep};
 
 use crate::bot::interaction::process_ctx_results;

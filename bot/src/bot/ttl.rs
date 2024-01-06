@@ -6,7 +6,7 @@ use tokio::{sync::RwLock, time::sleep};
 
 use crate::bot::interaction::process_ctx_results;
 
-use crate::dialogues_controller::NewDialController;
+use crate::dialogues_controller::DialCtxActions;
 use crate::{dialogues_controller::CtxResult, user_repo_factory::RepositoriesFactory};
 use std::sync::Arc;
 

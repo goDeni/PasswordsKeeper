@@ -8,7 +8,7 @@ use teloxide::{
 };
 use tokio::task::JoinSet;
 
-use crate::dialogues_controller::NewDialController;
+use crate::dialogues_controller::DialCtxActions;
 use crate::{
     dialogues_controller::{self, DialInteraction},
     stated_dialogues::{MessageFormat, MessageId},
@@ -16,7 +16,7 @@ use crate::{
 
 use super::handlers::{AnyResult, HandlerResult};
 
-pub async fn handle_interaction<T: NewDialController>(
+pub async fn handle_interaction<T: DialCtxActions>(
     user_id: &UserId,
     bot: &Bot,
     context: &mut T,

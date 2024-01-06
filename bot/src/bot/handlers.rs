@@ -17,7 +17,7 @@ use crate::dialogues_controller::DialInteraction;
 use crate::user_repo_factory::RepositoriesFactory;
 use crate::{
     bot::interaction::{handle_interaction, process_ctx_results},
-    dialogues_controller::NewDialController,
+    dialogues_controller::DialCtxActions,
 };
 use std::sync::Arc;
 

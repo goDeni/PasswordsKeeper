@@ -8,7 +8,7 @@ use sec_store::repository::RecordsRepository;
 use teloxide::{macros::BotCommands, types::UserId};
 
 use crate::dialogues::hello::HelloDialogue;
-use crate::dialogues_controller::{CtxResult, DialogueController, NewDialController};
+use crate::dialogues_controller::{CtxResult, DialCtxActions, DialogueController};
 use crate::user_repo_factory::RepositoriesFactory;
 use anyhow::Result;
 
@@ -54,7 +54,7 @@ where
     }
 }
 
-impl<F: RepositoriesFactory<R>, R: RecordsRepository> NewDialController for DialContext<F, R> {
+impl<F: RepositoriesFactory<R>, R: RecordsRepository> DialCtxActions for DialContext<F, R> {
     fn new_controller(&self, user_id: u64) -> Result<(DialogueController, Vec<CtxResult>)> {
         let context = HelloDialogue::<F, R>::new(user_id.into(), self.factory.clone());
         DialogueController::create(context)

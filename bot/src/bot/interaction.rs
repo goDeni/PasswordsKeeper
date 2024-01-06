@@ -6,7 +6,7 @@ use teloxide::{
     types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode, UserId},
     Bot,
 };
-use tokio::task::JoinSet;
+use tokio::{sync::RwLock, task::JoinSet};
 
 use crate::dialogues_controller::DialCtxActions;
 use crate::{
@@ -19,15 +19,15 @@ use super::handlers::{AnyResult, HandlerResult};
 pub async fn handle_interaction<T: DialCtxActions>(
     user_id: &UserId,
     bot: &Bot,
-    context: &mut T,
+    context: &RwLock<T>,
     interaction: DialInteraction,
 ) -> HandlerResult {
-    let dial_controller = context.take_controller(&user_id.0);
+    let dial_controller = context.write().await.take_controller(&user_id.0);
 
     let (controller, results) = match dial_controller {
         Some(controller) => controller.handle(interaction),
         None => {
-            let (controller, results) = context.new_controller(user_id.0)?;
+            let (controller, results) = context.read().await.new_controller(user_id.0)?;
             controller
                 .handle(interaction)
                 .map(|(controller, handle_results)| {
@@ -42,13 +42,12 @@ pub async fn handle_interaction<T: DialCtxActions>(
     let sent_msg_ids = process_ctx_results(*user_id, results, bot).await?;
     if let Some(mut controller) = controller {
         controller.remember_sent_messages(sent_msg_ids);
-        context.put_controller(user_id.0, controller);
+        context.write().await.put_controller(user_id.0, controller);
     } else {
-        let (mut controller, results) = context.new_controller(user_id.0)?;
+        let (mut controller, results) = context.read().await.new_controller(user_id.0)?;
         let sent_msg_ids = process_ctx_results(*user_id, results, bot).await?;
-
         controller.remember_sent_messages(sent_msg_ids);
-        context.put_controller(user_id.0, controller);
+        context.write().await.put_controller(user_id.0, controller);
     }
     Ok(())
 }

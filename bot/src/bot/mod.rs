@@ -6,6 +6,7 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use sec_store::repository::RecordsRepository;
 use teloxide::{macros::BotCommands, types::UserId};
+use tokio::sync::RwLock;
 
 use crate::dialogues::hello::HelloDialogue;
 use crate::dialogues_controller::{CtxResult, DialCtxActions, DialogueController};
@@ -28,7 +29,7 @@ enum Command {
 }
 
 pub struct BotContext<F: RepositoriesFactory<R>, R: RecordsRepository> {
-    dial: DialContext<F, R>,
+    dial: RwLock<DialContext<F, R>>,
 }
 
 pub struct DialContext<F: RepositoriesFactory<R>, R: RecordsRepository> {
@@ -45,11 +46,11 @@ where
 {
     pub fn new(factory: F) -> Self {
         BotContext {
-            dial: DialContext {
+            dial: RwLock::new(DialContext {
                 factory,
                 dial_ctxs: HashMap::new(),
                 phantom: PhantomData,
-            },
+            }),
         }
     }
 }

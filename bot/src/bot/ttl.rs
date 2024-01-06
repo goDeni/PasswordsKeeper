@@ -24,6 +24,8 @@ pub async fn track_dialog_ttl<F: RepositoriesFactory<R>, R: RecordsRepository>(
             .read()
             .await
             .dial
+            .read()
+            .await
             .dial_ctxs
             .iter()
             .map(|(user_id, controller)| {
@@ -64,13 +66,15 @@ pub async fn track_dialog_ttl<F: RepositoriesFactory<R>, R: RecordsRepository>(
 
         if !keys_to_remove.is_empty() {
             log::debug!("[ttl controller] Remove {} dialogs", keys_to_remove.len());
-            let mut context_wlock = bot_context.write().await;
+            let context_wlock = bot_context.write().await;
 
             let result = keys_to_remove
                 .into_iter()
                 .filter_map(|user_id| {
                     context_wlock
                         .dial
+                        .try_write()
+                        .unwrap()
                         .take_controller(&user_id.0)
                         .map(|controller| (*user_id, controller))
                 })

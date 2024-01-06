@@ -6,6 +6,7 @@ use tokio::{sync::RwLock, time::sleep};
 
 use crate::bot::interaction::process_ctx_results;
 
+use crate::dialogues_controller::NewDialController;
 use crate::{dialogues_controller::CtxResult, user_repo_factory::RepositoriesFactory};
 use std::sync::Arc;
 
@@ -22,6 +23,7 @@ pub async fn track_dialog_ttl<F: RepositoriesFactory<R>, R: RecordsRepository>(
         let result = bot_context
             .read()
             .await
+            .dial
             .dial_ctxs
             .iter()
             .map(|(user_id, controller)| {
@@ -68,8 +70,8 @@ pub async fn track_dialog_ttl<F: RepositoriesFactory<R>, R: RecordsRepository>(
                 .into_iter()
                 .filter_map(|user_id| {
                     context_wlock
-                        .dial_ctxs
-                        .remove(user_id)
+                        .dial
+                        .take_controller(&user_id.0)
                         .map(|controller| (*user_id, controller))
                 })
                 .filter_map(|(user_id, controller)| match controller.shutdown() {

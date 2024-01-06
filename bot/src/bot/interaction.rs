@@ -1,39 +1,33 @@
 use std::future::IntoFuture;
 
-use sec_store::repository::RecordsRepository;
 use teloxide::{
     payloads::SendMessageSetters,
     requests::Requester,
     types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode, UserId},
     Bot,
 };
-use tokio::{sync::RwLock, task::JoinSet};
+use tokio::task::JoinSet;
 
-use crate::{dialogues::hello::HelloDialogue, user_repo_factory::RepositoriesFactory};
+use crate::dialogues_controller::NewDialController;
 use crate::{
-    dialogues_controller::{self, DialInteraction, DialogueController},
+    dialogues_controller::{self, DialInteraction},
     stated_dialogues::{MessageFormat, MessageId},
 };
-use std::sync::Arc;
 
-use super::{
-    handlers::{AnyResult, HandlerResult},
-    BotContext,
-};
+use super::handlers::{AnyResult, HandlerResult};
 
-pub async fn handle_interaction<F: RepositoriesFactory<R>, R: RecordsRepository>(
+pub async fn handle_interaction<T: NewDialController>(
     user_id: &UserId,
     bot: &Bot,
-    context: Arc<RwLock<BotContext<F, R>>>,
+    context: &mut T,
     interaction: DialInteraction,
 ) -> HandlerResult {
-    let dial_controller = context.write().await.dial_ctxs.remove(user_id);
+    let dial_controller = context.take_controller(&user_id.0);
 
     let (controller, results) = match dial_controller {
         Some(controller) => controller.handle(interaction),
         None => {
-            let (controller, results) =
-                create_dial_controller(context.read().await.factory.clone(), user_id)?;
+            let (controller, results) = context.new_controller(user_id.0)?;
             controller
                 .handle(interaction)
                 .map(|(controller, handle_results)| {
@@ -48,24 +42,15 @@ pub async fn handle_interaction<F: RepositoriesFactory<R>, R: RecordsRepository>
     let sent_msg_ids = process_ctx_results(*user_id, results, bot).await?;
     if let Some(mut controller) = controller {
         controller.remember_sent_messages(sent_msg_ids);
-        context.write().await.dial_ctxs.insert(*user_id, controller);
+        context.put_controller(user_id.0, controller);
     } else {
-        let (mut controller, results) =
-            create_dial_controller(context.read().await.factory.clone(), user_id)?;
+        let (mut controller, results) = context.new_controller(user_id.0)?;
         let sent_msg_ids = process_ctx_results(*user_id, results, bot).await?;
 
         controller.remember_sent_messages(sent_msg_ids);
-        context.write().await.dial_ctxs.insert(*user_id, controller);
+        context.put_controller(user_id.0, controller);
     }
     Ok(())
-}
-
-fn create_dial_controller<F: RepositoriesFactory<R>, R: RecordsRepository>(
-    factory: F,
-    user_id: &UserId,
-) -> AnyResult<(DialogueController, Vec<dialogues_controller::CtxResult>)> {
-    let context = HelloDialogue::<F, R>::new((*user_id).into(), factory);
-    Ok(DialogueController::create(context)?)
 }
 
 pub async fn process_ctx_results(

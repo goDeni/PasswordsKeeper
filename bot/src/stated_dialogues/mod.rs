@@ -81,6 +81,11 @@ impl From<UserId> for String {
         val.0
     }
 }
+impl From<u64> for UserId {
+    fn from(val: u64) -> Self {
+        Self(val.to_string())
+    }
+}
 
 #[derive(Clone)]
 pub struct Message {

@@ -21,6 +21,12 @@ pub enum CtxResult {
     Buttons(OutgoingMessage, Vec<Vec<(ButtonPayload, String)>>),
 }
 
+pub trait NewDialController {
+    fn new_controller(&self, user_id: u64) -> Result<(DialogueController, Vec<CtxResult>)>;
+    fn take_controller(&mut self, user_id: &u64) -> Option<DialogueController>;
+    fn put_controller(&mut self, user_id: u64, controller: DialogueController);
+}
+
 impl DialogueController {
     pub fn create<T>(mut context: T) -> Result<(Self, Vec<CtxResult>)>
     where

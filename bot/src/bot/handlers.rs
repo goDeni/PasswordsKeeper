@@ -13,9 +13,12 @@ use teloxide::{
 };
 use tokio::sync::RwLock;
 
-use crate::bot::interaction::{handle_interaction, process_ctx_results};
 use crate::dialogues_controller::DialInteraction;
 use crate::user_repo_factory::RepositoriesFactory;
+use crate::{
+    bot::interaction::{handle_interaction, process_ctx_results},
+    dialogues_controller::NewDialController,
+};
 use std::sync::Arc;
 
 use super::{BotContext, BotState, Command};
@@ -56,10 +59,12 @@ async fn main_state_handler<F: RepositoriesFactory<R>, R: RecordsRepository>(
     );
 
     let user_id = msg.from().unwrap().id;
+    let mut w_context = context.write().await;
+
     handle_interaction(
         &user_id,
         &bot,
-        context,
+        &mut w_context.dial,
         DialInteraction::Message(msg.into()),
     )
     .await
@@ -77,12 +82,13 @@ async fn default_callback_handler<F: RepositoriesFactory<R>, R: RecordsRepositor
     );
 
     let user_id = query.from.id;
+    let mut w_context = context.write().await;
 
     log::debug!("Callback ({user_id}): Handling \"{:?}\"", query.data);
     handle_interaction(
         &user_id,
         &bot,
-        context,
+        &mut w_context.dial,
         DialInteraction::Select(query.into()),
     )
     .await
@@ -99,14 +105,16 @@ async fn handle_reset_command<F: RepositoriesFactory<R>, R: RecordsRepository>(
         msg.from().map(|f| f.id)
     );
     let user_id = msg.from().unwrap().id;
-    if let Some(old_controller) = context.write().await.dial_ctxs.remove(&user_id) {
+
+    if let Some(old_controller) = context.write().await.dial.take_controller(&user_id.0) {
         process_ctx_results(user_id, old_controller.shutdown()?, &bot).await?;
     }
 
+    let mut w_context = context.write().await;
     handle_interaction(
         &user_id,
         &bot,
-        context,
+        &mut w_context.dial,
         DialInteraction::Command(msg.clone().into()),
     )
     .await
@@ -124,11 +132,12 @@ async fn handle_command<F: RepositoriesFactory<R>, R: RecordsRepository>(
         msg.from().map(|f| f.id)
     );
     let user_id = msg.from().unwrap().id;
+    let mut w_context = context.write().await;
 
     handle_interaction(
         &user_id,
         &bot,
-        context,
+        &mut w_context.dial,
         DialInteraction::Command(msg.clone().into()),
     )
     .await

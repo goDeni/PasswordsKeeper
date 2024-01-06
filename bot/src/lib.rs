@@ -2,6 +2,7 @@
 
 use stated_dialogues::Select;
 
+pub mod bot;
 pub mod dialogues;
 pub mod dialogues_controller;
 pub mod handler;

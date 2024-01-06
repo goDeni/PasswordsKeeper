@@ -33,7 +33,7 @@ pub async fn handle_interaction<F: RepositoriesFactory<R>, R: RecordsRepository>
         Some(controller) => controller.handle(interaction),
         None => {
             let (controller, results) =
-                create_dial_controller::<F, R>(context.read().await.factory.clone(), user_id)?;
+                create_dial_controller(context.read().await.factory.clone(), user_id)?;
             controller
                 .handle(interaction)
                 .map(|(controller, handle_results)| {

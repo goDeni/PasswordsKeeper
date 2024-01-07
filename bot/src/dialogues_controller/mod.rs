@@ -80,6 +80,8 @@ impl DialogueController {
         self.context.remember_sent_messages(msg_ids)
     }
 }
+
+
 fn process_context_results(
     context: Box<AnyDialContext>,
     mut results: Vec<stated_dialogues::CtxResult>,

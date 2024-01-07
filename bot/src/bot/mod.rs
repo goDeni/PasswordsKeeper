@@ -4,10 +4,12 @@ pub mod ttl;
 use std::{collections::HashMap, marker::PhantomData};
 
 use sec_store::repository::RecordsRepository;
+use teloxide::Bot;
 use teloxide::{macros::BotCommands, types::UserId};
 use tokio::sync::RwLock;
 
 use crate::dialogues::hello::HelloDialogue;
+use crate::dialogues_controller::teloxide::TeloxideAdapter;
 use crate::dialogues_controller::{CtxResult, DialCtxActions, DialogueController};
 use crate::user_repo_factory::RepositoriesFactory;
 use anyhow::Result;
@@ -29,6 +31,7 @@ enum Command {
 
 pub struct BotContext<F: RepositoriesFactory<R>, R: RecordsRepository> {
     dial: RwLock<DialContext<F, R>>,
+    pub bot_adapter: TeloxideAdapter,
 }
 
 pub struct DialContext<F: RepositoriesFactory<R>, R: RecordsRepository> {
@@ -43,13 +46,14 @@ where
     F: RepositoriesFactory<R>,
     R: RecordsRepository,
 {
-    pub fn new(factory: F) -> Self {
+    pub fn new(factory: F, bot: Bot) -> Self {
         BotContext {
             dial: RwLock::new(DialContext {
                 factory,
                 dial_ctxs: HashMap::new(),
                 phantom: PhantomData,
             }),
+            bot_adapter: TeloxideAdapter::new(bot),
         }
     }
 }

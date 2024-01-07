@@ -1,3 +1,4 @@
+pub mod handler;
 pub mod teloxide;
 
 use std::time::SystemTime;
@@ -9,6 +10,21 @@ type AnyDialContext = dyn DialContext + Sync + Send;
 pub struct DialogueController {
     context: Box<AnyDialContext>,
     last_usage_time: SystemTime,
+}
+
+pub trait BotAdapter {
+    async fn send_message(&self, user_id: u64, msg: OutgoingMessage) -> Result<MessageId>;
+    async fn send_keyboard(
+        &self,
+        user_id: u64,
+        msg: OutgoingMessage,
+        selector: Vec<Vec<(ButtonPayload, String)>>,
+    ) -> Result<MessageId>;
+    //
+    async fn delete_messages(&self, user_id: u64, messages_ids: Vec<MessageId>) -> Result<()>;
+    async fn delete_message(&self, user_id: u64, msg_id: MessageId) -> Result<()> {
+        self.delete_messages(user_id, vec![msg_id]).await
+    }
 }
 
 pub enum DialInteraction {
@@ -80,7 +96,6 @@ impl DialogueController {
         self.context.remember_sent_messages(msg_ids)
     }
 }
-
 
 fn process_context_results(
     context: Box<AnyDialContext>,

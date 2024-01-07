@@ -30,7 +30,7 @@ async fn main() {
     let bot = Bot::from_env();
 
     let factory = FileRepositoriesFactory(data_path.to_path_buf());
-    let bot_context = Arc::new(RwLock::new(BotContext::new(factory)));
+    let bot_context = Arc::new(RwLock::new(BotContext::new(factory, bot.clone())));
 
     tokio::spawn(track_dialog_ttl(bot_context.clone(), bot.clone()));
     Dispatcher::builder(

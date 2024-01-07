@@ -4,7 +4,7 @@ use sec_store::repository::RecordsRepository;
 use teloxide::{requests::Requester, types::UserId, Bot};
 use tokio::{sync::RwLock, time::sleep};
 
-use crate::dialogues_controller::teloxide::process_ctx_results;
+use crate::dialogues_controller::handler::process_ctx_results;
 use crate::dialogues_controller::DialCtxActions;
 use crate::{dialogues_controller::CtxResult, user_repo_factory::RepositoriesFactory};
 use std::sync::Arc;
@@ -85,10 +85,10 @@ pub async fn track_dialog_ttl<F: RepositoriesFactory<R>, R: RecordsRepository>(
                     }
                 })
                 .collect::<Vec<(UserId, Vec<CtxResult>)>>();
-            drop(context_wlock);
 
+            let context_rlock = context_wlock.downgrade();
             for (user_id, ctx_results) in result {
-                if let Err(err) = process_ctx_results(user_id, ctx_results, &bot).await {
+                if let Err(err) = process_ctx_results(user_id.0, ctx_results, &context_rlock.bot_adapter).await {
                     log::error!(
                         "[ttl controller] Failed results processing for {}: {}",
                         user_id,

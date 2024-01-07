@@ -1,4 +1,8 @@
-use std::time::SystemTime;
+pub mod handler;
+pub mod teloxide;
+pub mod ttl;
+
+use std::{future::Future, time::SystemTime};
 
 use crate::stated_dialogues::{self, ButtonPayload, DialContext, MessageId, OutgoingMessage};
 use anyhow::{Context, Result};
@@ -7,6 +11,33 @@ type AnyDialContext = dyn DialContext + Sync + Send;
 pub struct DialogueController {
     context: Box<AnyDialContext>,
     last_usage_time: SystemTime,
+}
+
+pub trait BotAdapter {
+    fn send_message(
+        &self,
+        user_id: u64,
+        msg: OutgoingMessage,
+    ) -> impl Future<Output = Result<MessageId>> + Send;
+    fn send_keyboard(
+        &self,
+        user_id: u64,
+        msg: OutgoingMessage,
+        selector: Vec<Vec<(ButtonPayload, String)>>,
+    ) -> impl std::future::Future<Output = Result<MessageId>> + Send;
+    //
+    fn delete_messages(
+        &self,
+        user_id: u64,
+        messages_ids: Vec<MessageId>,
+    ) -> impl Future<Output = Result<()>> + Send;
+    fn delete_message(
+        &self,
+        user_id: u64,
+        msg_id: MessageId,
+    ) -> impl Future<Output = Result<()>> + Send {
+        self.delete_messages(user_id, vec![msg_id])
+    }
 }
 
 pub enum DialInteraction {
@@ -19,6 +50,13 @@ pub enum CtxResult {
     Messages(Vec<OutgoingMessage>),
     RemoveMessages(Vec<MessageId>),
     Buttons(OutgoingMessage, Vec<Vec<(ButtonPayload, String)>>),
+}
+
+pub trait DialCtxActions {
+    fn new_controller(&self, user_id: u64) -> Result<(DialogueController, Vec<CtxResult>)>;
+    fn take_controller(&mut self, user_id: &u64) -> Option<DialogueController>;
+    fn put_controller(&mut self, user_id: u64, controller: DialogueController);
+    fn dialogues_list(&self) -> Vec<(&u64, &DialogueController)>;
 }
 
 impl DialogueController {
@@ -72,6 +110,7 @@ impl DialogueController {
         self.context.remember_sent_messages(msg_ids)
     }
 }
+
 fn process_context_results(
     context: Box<AnyDialContext>,
     mut results: Vec<stated_dialogues::CtxResult>,

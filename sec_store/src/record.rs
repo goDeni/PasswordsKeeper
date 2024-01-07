@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::cipher::{decrypt_string, encrypt_string, DecryptResult, EncryptedData, EncryptionKey};
+use crate::cipher::{decrypt_string, encrypt_string, DecryptResult, EncryptedData};
 
 pub type RecordId = String;
 
@@ -50,8 +50,8 @@ impl Record {
         }
     }
 
-    pub fn get_fields(&self) -> Vec<(&FieldName, &FieldValue)> {
-        self.fields.iter().map(|(a, b)| (a, b)).collect()
+    pub fn get_fields(&self) -> Vec<&(String, String)> {
+        self.fields.iter().collect()
     }
 
     pub fn get_field_value(&self, field_name: &str) -> Option<FieldValue> {
@@ -81,18 +81,15 @@ impl Record {
         }
     }
 
-    pub fn encrypt(&self, passwd: &EncryptionKey) -> EncryptedRecord {
+    pub fn encrypt(&self, passwd: &str) -> EncryptedRecord {
         serde_json::to_string(&encrypt_string(
             passwd,
-            serde_json::to_string(self).unwrap(),
+            &serde_json::to_string(self).unwrap(),
         ))
         .unwrap()
     }
 
-    pub fn decrypt(
-        passwd: &EncryptionKey,
-        encrypted_record: &EncryptedRecord,
-    ) -> DecryptResult<Record> {
+    pub fn decrypt(passwd: &str, encrypted_record: &EncryptedRecord) -> DecryptResult<Record> {
         Ok(serde_json::from_str::<Record>(&decrypt_string(
             passwd,
             serde_json::from_str::<EncryptedData>(encrypted_record).unwrap(),
@@ -108,7 +105,7 @@ mod tests {
     #[test]
     fn test_record_encryption() {
         let fields = vec![(String::from("First"), String::from("1"))];
-        super::Record::new(fields).encrypt(&"password".to_string());
+        super::Record::new(fields).encrypt("password");
     }
 
     #[test]
@@ -127,10 +124,8 @@ mod tests {
     #[test]
     fn test_record_decryption_with_bad_passwd() {
         let fields = vec![(String::from("First"), String::from("1"))];
-        let result = super::Record::decrypt(
-            &"Second".to_string(),
-            &super::Record::new(fields.clone()).encrypt(&"One".to_string()),
-        );
+        let result =
+            super::Record::decrypt("Second", &super::Record::new(fields.clone()).encrypt("One"));
 
         let expected = crate::cipher::DecryptionError::WrongPassword;
         assert_eq!(result, Err(expected));
@@ -148,8 +143,8 @@ mod tests {
         assert_eq!(
             record.get_fields(),
             vec![
-                (&"Field1".to_string(), &"Value1".to_string()),
-                (&"Field2".to_string(), &"Value2".to_string()),
+                &("Field1".to_string(), "Value1".to_string()),
+                &("Field2".to_string(), "Value2".to_string()),
             ]
         )
     }
@@ -174,7 +169,7 @@ mod tests {
 
         assert_eq!(
             record.get_fields(),
-            vec![(&"Field1".to_string(), &"Value2".to_string()),]
+            vec![&("Field1".to_string(), "Value2".to_string()),]
         )
     }
 

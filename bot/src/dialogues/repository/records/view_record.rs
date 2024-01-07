@@ -34,7 +34,7 @@ where
     T: RecordsRepository,
 {
     fn init(&mut self) -> Result<Vec<CtxResult>> {
-        let result: CtxResult = match self.repo.get(&self.record_id) {
+        let result: CtxResult = match self.repo.get(&self.record_id)? {
             Some(record) => CtxResult::Buttons(
                 record_as_message(record),
                 vec![

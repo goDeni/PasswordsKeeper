@@ -1,7 +1,7 @@
 pub mod handler;
 pub mod teloxide;
 
-use std::time::SystemTime;
+use std::{future::Future, time::SystemTime};
 
 use crate::stated_dialogues::{self, ButtonPayload, DialContext, MessageId, OutgoingMessage};
 use anyhow::{Context, Result};
@@ -13,17 +13,29 @@ pub struct DialogueController {
 }
 
 pub trait BotAdapter {
-    async fn send_message(&self, user_id: u64, msg: OutgoingMessage) -> Result<MessageId>;
-    async fn send_keyboard(
+    fn send_message(
+        &self,
+        user_id: u64,
+        msg: OutgoingMessage,
+    ) -> impl Future<Output = Result<MessageId>> + Send;
+    fn send_keyboard(
         &self,
         user_id: u64,
         msg: OutgoingMessage,
         selector: Vec<Vec<(ButtonPayload, String)>>,
-    ) -> Result<MessageId>;
+    ) -> impl std::future::Future<Output = Result<MessageId>> + Send;
     //
-    async fn delete_messages(&self, user_id: u64, messages_ids: Vec<MessageId>) -> Result<()>;
-    async fn delete_message(&self, user_id: u64, msg_id: MessageId) -> Result<()> {
-        self.delete_messages(user_id, vec![msg_id]).await
+    fn delete_messages(
+        &self,
+        user_id: u64,
+        messages_ids: Vec<MessageId>,
+    ) -> impl Future<Output = Result<()>> + Send;
+    fn delete_message(
+        &self,
+        user_id: u64,
+        msg_id: MessageId,
+    ) -> impl Future<Output = Result<()>> + Send {
+        self.delete_messages(user_id, vec![msg_id])
     }
 }
 

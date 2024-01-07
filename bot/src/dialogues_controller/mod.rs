@@ -1,5 +1,6 @@
 pub mod handler;
 pub mod teloxide;
+pub mod ttl;
 
 use std::{future::Future, time::SystemTime};
 
@@ -55,6 +56,7 @@ pub trait DialCtxActions {
     fn new_controller(&self, user_id: u64) -> Result<(DialogueController, Vec<CtxResult>)>;
     fn take_controller(&mut self, user_id: &u64) -> Option<DialogueController>;
     fn put_controller(&mut self, user_id: u64, controller: DialogueController);
+    fn dialogues_list(&self) -> Vec<(&u64, &DialogueController)>;
 }
 
 impl DialogueController {

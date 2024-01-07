@@ -71,4 +71,11 @@ impl<F: RepositoriesFactory<R>, R: RecordsRepository> DialCtxActions for DialCon
     fn put_controller(&mut self, user_id: u64, controller: DialogueController) {
         self.dial_ctxs.insert(UserId(user_id), controller);
     }
+
+    fn dialogues_list(&self) -> Vec<(&u64, &DialogueController)> {
+        self.dial_ctxs
+            .iter()
+            .map(|(user_id, controller)| (&user_id.0, controller))
+            .collect()
+    }
 }

@@ -1,3 +1,5 @@
+pub mod teloxide;
+
 use std::time::SystemTime;
 
 use crate::stated_dialogues::{self, ButtonPayload, DialContext, MessageId, OutgoingMessage};

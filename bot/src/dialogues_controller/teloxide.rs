@@ -14,7 +14,8 @@ use crate::{
     stated_dialogues::{MessageFormat, MessageId},
 };
 
-use super::handlers::{AnyResult, HandlerResult};
+pub type AnyResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
+pub type HandlerResult = AnyResult<()>;
 
 pub async fn handle_interaction<T: DialCtxActions>(
     user_id: &UserId,

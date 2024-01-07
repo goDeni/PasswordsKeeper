@@ -13,18 +13,15 @@ use teloxide::{
 };
 use tokio::sync::RwLock;
 
-use crate::dialogues_controller::DialInteraction;
-use crate::user_repo_factory::RepositoriesFactory;
-use crate::{
-    bot::interaction::{handle_interaction, process_ctx_results},
-    dialogues_controller::DialCtxActions,
+use crate::dialogues_controller::DialCtxActions;
+use crate::dialogues_controller::{
+    teloxide::{handle_interaction, process_ctx_results, HandlerResult},
+    DialInteraction,
 };
+use crate::user_repo_factory::RepositoriesFactory;
 use std::sync::Arc;
 
 use super::{BotContext, BotState, Command};
-
-pub type AnyResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
-pub type HandlerResult = AnyResult<()>;
 
 pub fn build_handler<F: RepositoriesFactory<R>, R: RecordsRepository>(
 ) -> Handler<'static, DependencyMap, Result<(), Box<dyn Error + Send + Sync>>, DpHandlerDescription>
@@ -113,11 +110,10 @@ async fn handle_reset_command<F: RepositoriesFactory<R>, R: RecordsRepository>(
         process_ctx_results(user_id, old_controller.shutdown()?, &bot).await?;
     }
 
-    let mut w_context = context.write().await;
     handle_interaction(
         &user_id,
         &bot,
-        &mut w_context.dial,
+        &context.read().await.dial,
         DialInteraction::Command(msg.clone().into()),
     )
     .await

@@ -1,5 +1,4 @@
 pub mod handlers;
-mod interaction;
 pub mod ttl;
 
 use std::{collections::HashMap, marker::PhantomData};

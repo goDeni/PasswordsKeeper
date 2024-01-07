@@ -4,8 +4,7 @@ use sec_store::repository::RecordsRepository;
 use teloxide::{requests::Requester, types::UserId, Bot};
 use tokio::{sync::RwLock, time::sleep};
 
-use crate::bot::interaction::process_ctx_results;
-
+use crate::dialogues_controller::teloxide::process_ctx_results;
 use crate::dialogues_controller::DialCtxActions;
 use crate::{dialogues_controller::CtxResult, user_repo_factory::RepositoriesFactory};
 use std::sync::Arc;

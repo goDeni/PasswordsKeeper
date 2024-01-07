@@ -1,5 +1,4 @@
 pub mod handlers;
-pub mod ttl;
 
 use std::sync::Arc;
 use std::{collections::HashMap, marker::PhantomData};

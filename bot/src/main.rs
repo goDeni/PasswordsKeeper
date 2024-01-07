@@ -1,13 +1,13 @@
 extern crate sec_store;
 
 use bot::{
-    bot::{handlers::build_handler, ttl::track_dialog_ttl, BotContext, BotState},
+    bot::{handlers::build_handler, BotContext, BotState},
+    dialogues_controller::ttl::track_dialog_ttl,
     user_repo_factory::file::FileRepositoriesFactory,
 };
 use sec_store::repository::file::RecordsFileRepository;
 use std::{fs::create_dir, path::Path, sync::Arc};
 use teloxide::{dispatching::dialogue::InMemStorage, prelude::*};
-use tokio::sync::RwLock;
 
 #[tokio::main]
 async fn main() {
@@ -30,9 +30,13 @@ async fn main() {
     let bot = Bot::from_env();
 
     let factory = FileRepositoriesFactory(data_path.to_path_buf());
-    let bot_context = Arc::new(RwLock::new(BotContext::new(factory, bot.clone())));
+    let bot_context = Arc::new(BotContext::new(factory, bot.clone()));
 
-    tokio::spawn(track_dialog_ttl(bot_context.clone(), bot.clone()));
+    tokio::spawn(track_dialog_ttl(
+        bot_context.dial.clone(),
+        bot_context.bot_adapter.clone(),
+        300,
+    ));
     Dispatcher::builder(
         bot,
         build_handler::<FileRepositoriesFactory, RecordsFileRepository>(),

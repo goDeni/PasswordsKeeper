@@ -11,7 +11,6 @@ use teloxide::{
     types::{CallbackQuery, Message, Update},
     Bot,
 };
-use tokio::sync::RwLock;
 
 use crate::dialogues_controller::{
     handler::{handle_interaction, process_ctx_results},
@@ -46,7 +45,7 @@ pub fn build_handler<F: RepositoriesFactory<R>, R: RecordsRepository>(
 
 async fn main_state_handler<F: RepositoriesFactory<R>, R: RecordsRepository>(
     msg: Message,
-    context: Arc<RwLock<BotContext<F, R>>>,
+    context: Arc<BotContext<F, R>>,
 ) -> HandlerResult {
     log::debug!(
         "Handling message. chat_id={} from={:?}",
@@ -55,12 +54,10 @@ async fn main_state_handler<F: RepositoriesFactory<R>, R: RecordsRepository>(
     );
 
     let user_id = msg.from().unwrap().id;
-    let r_ctx = context.read().await;
-
     handle_interaction(
         &user_id.0,
-        &r_ctx.bot_adapter,
-        &r_ctx.dial,
+        &context.bot_adapter,
+        &context.dial,
         DialInteraction::Message(msg.into()),
     )
     .await
@@ -69,7 +66,7 @@ async fn main_state_handler<F: RepositoriesFactory<R>, R: RecordsRepository>(
 async fn default_callback_handler<F: RepositoriesFactory<R>, R: RecordsRepository>(
     _bot: Bot,
     query: CallbackQuery,
-    context: Arc<RwLock<BotContext<F, R>>>,
+    context: Arc<BotContext<F, R>>,
 ) -> HandlerResult {
     log::debug!(
         "Callback: called, chat_id: {:?}; from: {:?}",
@@ -78,22 +75,19 @@ async fn default_callback_handler<F: RepositoriesFactory<R>, R: RecordsRepositor
     );
 
     let user_id = query.from.id;
-    let r_ctx = context.read().await;
-
     log::debug!("Callback ({user_id}): Handling \"{:?}\"", query.data);
     handle_interaction(
         &user_id.0,
-        &r_ctx.bot_adapter,
-        &r_ctx.dial,
+        &context.bot_adapter,
+        &context.dial,
         DialInteraction::Select(query.into()),
     )
     .await
 }
 
 async fn handle_reset_command<F: RepositoriesFactory<R>, R: RecordsRepository>(
-    _bot: Bot,
     msg: Message,
-    context: Arc<RwLock<BotContext<F, R>>>,
+    context: Arc<BotContext<F, R>>,
 ) -> HandlerResult {
     log::debug!(
         "Handling reset command. chat_id={} from={:?}",
@@ -101,25 +95,22 @@ async fn handle_reset_command<F: RepositoriesFactory<R>, R: RecordsRepository>(
         msg.from().map(|f| f.id)
     );
     let user_id = msg.from().unwrap().id;
-    let r_ctx = context.read().await;
-
-    if let Some(old_controller) = r_ctx.dial.write().await.take_controller(&user_id.0) {
-        process_ctx_results(user_id.0, old_controller.shutdown()?, &r_ctx.bot_adapter).await?;
+    if let Some(old_controller) = context.dial.write().await.take_controller(&user_id.0) {
+        process_ctx_results(user_id.0, old_controller.shutdown()?, &context.bot_adapter).await?;
     }
 
     handle_interaction(
         &user_id.0,
-        &r_ctx.bot_adapter,
-        &r_ctx.dial,
+        &context.bot_adapter,
+        &context.dial,
         DialInteraction::Command(msg.clone().into()),
     )
     .await
 }
 
 async fn handle_command<F: RepositoriesFactory<R>, R: RecordsRepository>(
-    _bot: Bot,
     msg: Message,
-    context: Arc<RwLock<BotContext<F, R>>>,
+    context: Arc<BotContext<F, R>>,
 ) -> HandlerResult {
     log::debug!(
         "Handling {:?} command. chat_id={} from={:?}",
@@ -128,12 +119,10 @@ async fn handle_command<F: RepositoriesFactory<R>, R: RecordsRepository>(
         msg.from().map(|f| f.id)
     );
     let user_id = msg.from().unwrap().id;
-    let r_ctx = context.read().await;
-
     handle_interaction(
         &user_id.0,
-        &r_ctx.bot_adapter,
-        &r_ctx.dial,
+        &context.bot_adapter,
+        &context.dial,
         DialInteraction::Command(msg.clone().into()),
     )
     .await

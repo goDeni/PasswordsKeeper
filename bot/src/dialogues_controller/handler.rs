@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use tokio::sync::RwLock;
 
 use crate::dialogues_controller::DialCtxActions;
@@ -10,7 +12,7 @@ pub type HandlerResult = AnyResult<()>;
 
 pub async fn handle_interaction<T: DialCtxActions, B: BotAdapter>(
     user_id: &u64,
-    bot: &B,
+    bot: &Arc<B>,
     context: &RwLock<T>,
     interaction: DialInteraction,
 ) -> HandlerResult {
@@ -47,7 +49,7 @@ pub async fn handle_interaction<T: DialCtxActions, B: BotAdapter>(
 pub async fn process_ctx_results<B: BotAdapter>(
     user_id: u64,
     ctx_results: Vec<CtxResult>,
-    bot: &B,
+    bot: &Arc<B>,
 ) -> AnyResult<Vec<MessageId>> {
     log::debug!(
         "Results processing ({user_id}): executing {} results...",

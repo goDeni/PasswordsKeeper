@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use tokio::{sync::RwLock, time::sleep};
@@ -8,10 +9,10 @@ use crate::dialogues_controller::DialCtxActions;
 
 use super::BotAdapter;
 
-const DIALOG_CONTROLLER_TTL_SECONDS: u64 = 300;
 pub async fn track_dialog_ttl<B: BotAdapter, C: DialCtxActions>(
-    dial_ctx: &RwLock<C>,
-    bot_adapter: &B,
+    dial_ctx: Arc<RwLock<C>>,
+    bot_adapter: Arc<B>,
+    max_ttl_seconds: u64,
 ) {
     loop {
         let current_time = SystemTime::now();
@@ -36,24 +37,17 @@ pub async fn track_dialog_ttl<B: BotAdapter, C: DialCtxActions>(
             .filter_map(|(_, duration)| {
                 duration
                     .as_secs()
-                    .le(&DIALOG_CONTROLLER_TTL_SECONDS)
-                    .then(|| {
-                        Some(Duration::from_secs(
-                            DIALOG_CONTROLLER_TTL_SECONDS - duration.as_secs(),
-                        ))
-                    })
+                    .le(&max_ttl_seconds)
+                    .then(|| Some(Duration::from_secs(max_ttl_seconds - duration.as_secs())))
                     .unwrap_or(None)
             })
             .max()
-            .unwrap_or_else(|| Duration::from_secs(DIALOG_CONTROLLER_TTL_SECONDS));
+            .unwrap_or_else(|| Duration::from_secs(max_ttl_seconds));
 
         let keys_to_remove = result
             .iter()
             .filter_map(|(user_id, duration)| {
-                duration
-                    .as_secs()
-                    .ge(&DIALOG_CONTROLLER_TTL_SECONDS)
-                    .then_some(user_id)
+                duration.as_secs().ge(&max_ttl_seconds).then_some(user_id)
             })
             .collect::<Vec<&u64>>();
 
@@ -79,7 +73,7 @@ pub async fn track_dialog_ttl<B: BotAdapter, C: DialCtxActions>(
             drop(context_wlock);
 
             for (user_id, ctx_results) in result {
-                if let Err(err) = process_ctx_results(user_id, ctx_results, bot_adapter).await {
+                if let Err(err) = process_ctx_results(user_id, ctx_results, &bot_adapter).await {
                     log::error!(
                         "[ttl controller] Failed results processing for {}: {}",
                         user_id,
@@ -89,7 +83,7 @@ pub async fn track_dialog_ttl<B: BotAdapter, C: DialCtxActions>(
                     user_id,
                     format!(
                         "Диалог закрыт потому что не использовался {} секунд 🙈\nВведите /start чтобы инициировать новый диалог",
-                        DIALOG_CONTROLLER_TTL_SECONDS
+                        max_ttl_seconds
                     ).into()
                 )
                     .await

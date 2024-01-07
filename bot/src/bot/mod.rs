@@ -1,6 +1,7 @@
 pub mod handlers;
 pub mod ttl;
 
+use std::sync::Arc;
 use std::{collections::HashMap, marker::PhantomData};
 
 use sec_store::repository::RecordsRepository;
@@ -30,8 +31,8 @@ enum Command {
 }
 
 pub struct BotContext<F: RepositoriesFactory<R>, R: RecordsRepository> {
-    dial: RwLock<DialContext<F, R>>,
-    pub bot_adapter: TeloxideAdapter,
+    pub dial: Arc<RwLock<DialContext<F, R>>>,
+    pub bot_adapter: Arc<TeloxideAdapter>,
 }
 
 pub struct DialContext<F: RepositoriesFactory<R>, R: RecordsRepository> {
@@ -48,12 +49,12 @@ where
 {
     pub fn new(factory: F, bot: Bot) -> Self {
         BotContext {
-            dial: RwLock::new(DialContext {
+            dial: Arc::new(RwLock::new(DialContext {
                 factory,
                 dial_ctxs: HashMap::new(),
                 phantom: PhantomData,
-            }),
-            bot_adapter: TeloxideAdapter::new(bot),
+            })),
+            bot_adapter: Arc::new(TeloxideAdapter::new(bot)),
         }
     }
 }

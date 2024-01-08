@@ -66,10 +66,9 @@ where
 
     fn handle_select(&mut self, select: Select) -> Result<Vec<CtxResult>> {
         let result: CtxResult = match (&select.user_id, select.data()) {
-            (user_id, Some(OPEN_REPO)) => CtxResult::NewCtx(Box::new(OpenRepoDialogue::new(
-                self.factory.clone(),
-                user_id.clone(),
-            ))),
+            (_, Some(OPEN_REPO)) => {
+                CtxResult::NewCtx(Box::new(OpenRepoDialogue::new(self.factory.clone())))
+            }
             (_, Some(CREATE_REPO)) => {
                 CtxResult::NewCtx(Box::new(CreateRepoDialogue::new(self.factory.clone())))
             }

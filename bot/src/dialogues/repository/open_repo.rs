@@ -6,23 +6,19 @@ use crate::{dialogues::commands::CANCEL_COMMAND, user_repo_factory::Repositories
 use super::view_repo::ViewRepoDialog;
 use anyhow::{Context, Result};
 use sec_store::repository::{RecordsRepository, RepositoryOpenError};
-use stated_dialogues::stated_dialogues::{
-    CtxResult, DialContext, Message, MessageId, Select, UserId,
-};
+use stated_dialogues::stated_dialogues::{CtxResult, DialContext, Message, MessageId, Select};
 
 pub struct OpenRepoDialogue<F, R> {
     factory: F,
-    user_id: UserId,
     sent_msg_ids: HashSet<MessageId>,
     //
     phantom: PhantomData<R>,
 }
 
 impl<F, R> OpenRepoDialogue<F, R> {
-    pub fn new(factory: F, user_id: UserId) -> Self {
+    pub fn new(factory: F) -> Self {
         OpenRepoDialogue {
             factory,
-            user_id,
             sent_msg_ids: HashSet::new(),
             phantom: PhantomData,
         }

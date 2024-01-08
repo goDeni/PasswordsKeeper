@@ -97,7 +97,6 @@ where
                             CtxResult::RemoveMessages(vec![message.id]),
                             CtxResult::NewCtx(Box::new(OpenRepoDialogue::new(
                                 self.factory.clone(),
-                                user_id,
                             ))),
                         ])
                     }
@@ -109,7 +108,6 @@ where
                             CtxResult::RemoveMessages(vec![message.id]),
                             CtxResult::NewCtx(Box::new(OpenRepoDialogue::new(
                                 self.factory.clone(),
-                                user_id,
                             ))),
                         ])
                     }

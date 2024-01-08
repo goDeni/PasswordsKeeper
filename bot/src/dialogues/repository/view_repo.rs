@@ -1,8 +1,10 @@
 use std::collections::HashSet;
 
-use crate::stated_dialogues::{ButtonPayload, CtxResult, DialContext, Message, MessageId, Select};
 use anyhow::Result;
 use sec_store::repository::RecordsRepository;
+use stated_dialogues::stated_dialogues::{
+    ButtonPayload, CtxResult, DialContext, Message, MessageId, Select,
+};
 
 use super::records::{
     add_record::AddRecordDialog, fields::RECORD_NAME_FIELD, view_record::ViewRecordDialog,

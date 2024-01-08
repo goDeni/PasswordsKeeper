@@ -4,9 +4,11 @@ use std::marker::PhantomData;
 use crate::{dialogues::commands::CANCEL_COMMAND, user_repo_factory::RepositoriesFactory};
 
 use super::view_repo::ViewRepoDialog;
-use crate::stated_dialogues::{CtxResult, DialContext, Message, MessageId, Select, UserId};
 use anyhow::{Context, Result};
 use sec_store::repository::{RecordsRepository, RepositoryOpenError};
+use stated_dialogues::stated_dialogues::{
+    CtxResult, DialContext, Message, MessageId, Select, UserId,
+};
 
 pub struct OpenRepoDialogue<F, R> {
     factory: F,

@@ -6,7 +6,7 @@ use crate::{dialogues::commands::CANCEL_COMMAND, user_repo_factory::Repositories
 use anyhow::{Context, Result};
 
 use super::open_repo::OpenRepoDialogue;
-use crate::stated_dialogues::{CtxResult, DialContext, Message, MessageId, Select};
+use stated_dialogues::stated_dialogues::{CtxResult, DialContext, Message, MessageId, Select};
 
 #[derive(Clone)]
 enum CreationState {

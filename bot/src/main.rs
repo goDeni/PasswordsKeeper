@@ -2,10 +2,10 @@ extern crate sec_store;
 
 use bot::{
     bot::{handlers::build_handler, BotContext, BotState},
-    dialogues_controller::ttl::track_dialog_ttl,
     user_repo_factory::file::FileRepositoriesFactory,
 };
 use sec_store::repository::file::RecordsFileRepository;
+use stated_dialogues::dialogues_controller::ttl::track_dialog_ttl;
 use std::{fs::create_dir, path::Path, sync::Arc};
 use teloxide::{dispatching::dialogue::InMemStorage, prelude::*};
 

@@ -5,7 +5,7 @@ use sec_store::repository::RecordsRepository;
 use crate::user_repo_factory::RepositoriesFactory;
 use anyhow::Result;
 
-use crate::stated_dialogues::{
+use stated_dialogues::dialogues::{
     ButtonPayload, CtxResult, DialContext, Message, MessageId, Select, UserId,
 };
 
@@ -66,10 +66,9 @@ where
 
     fn handle_select(&mut self, select: Select) -> Result<Vec<CtxResult>> {
         let result: CtxResult = match (&select.user_id, select.data()) {
-            (user_id, Some(OPEN_REPO)) => CtxResult::NewCtx(Box::new(OpenRepoDialogue::new(
-                self.factory.clone(),
-                user_id.clone(),
-            ))),
+            (_, Some(OPEN_REPO)) => {
+                CtxResult::NewCtx(Box::new(OpenRepoDialogue::new(self.factory.clone())))
+            }
             (_, Some(CREATE_REPO)) => {
                 CtxResult::NewCtx(Box::new(CreateRepoDialogue::new(self.factory.clone())))
             }

@@ -9,10 +9,10 @@ use teloxide::{macros::BotCommands, types::UserId};
 use tokio::sync::RwLock;
 
 use crate::dialogues::hello::HelloDialogue;
-use crate::dialogues_controller::teloxide::TeloxideAdapter;
-use crate::dialogues_controller::{CtxResult, DialCtxActions, DialogueController};
 use crate::user_repo_factory::RepositoriesFactory;
 use anyhow::Result;
+use stated_dialogues::controller::teloxide::TeloxideAdapter;
+use stated_dialogues::controller::{CtxResult, DialCtxActions, DialogueController};
 
 #[derive(Clone, Default, Debug)]
 pub enum BotState {

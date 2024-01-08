@@ -2,8 +2,9 @@ FROM --platform=$BUILDPLATFORM rust:1-alpine3.18 as build_stage
 
 WORKDIR /build
 
-COPY ./bot ./bot
 COPY ./sec_store ./sec_store
+COPY ./stated_dialogues ./stated_dialogues
+COPY ./bot ./bot
 
 RUN apk add pkgconfig openssl musl-dev libressl-dev
 RUN cd bot && \

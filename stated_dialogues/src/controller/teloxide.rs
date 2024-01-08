@@ -8,11 +8,49 @@ use teloxide::Bot;
 use tokio::task::JoinSet;
 
 use super::BotAdapter;
-use crate::stated_dialogues::{ButtonPayload, MessageFormat, MessageId, OutgoingMessage};
+use crate::dialogues::{self, ButtonPayload, MessageFormat, MessageId, OutgoingMessage};
 use anyhow::Result;
 
 pub type AnyResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 pub type HandlerResult = AnyResult<()>;
+
+impl From<teloxide::types::MessageId> for dialogues::MessageId {
+    fn from(val: teloxide::types::MessageId) -> Self {
+        dialogues::MessageId(val.0)
+    }
+}
+
+impl From<dialogues::MessageId> for teloxide::types::MessageId {
+    fn from(val: dialogues::MessageId) -> Self {
+        teloxide::types::MessageId(val.0)
+    }
+}
+
+impl From<teloxide::types::UserId> for dialogues::UserId {
+    fn from(val: teloxide::types::UserId) -> Self {
+        dialogues::UserId(val.0.to_string())
+    }
+}
+
+impl From<teloxide::types::Message> for dialogues::Message {
+    fn from(val: teloxide::types::Message) -> Self {
+        dialogues::Message::new(
+            val.id.into(),
+            val.text().map(|t| t.to_string()),
+            val.from().map(|user| user.id.into()),
+        )
+    }
+}
+
+impl From<teloxide::types::CallbackQuery> for dialogues::Select {
+    fn from(val: teloxide::types::CallbackQuery) -> Self {
+        dialogues::Select::new(
+            val.message.map(|msg| msg.id.into()),
+            val.data,
+            val.from.id.into(),
+        )
+    }
+}
 
 pub struct TeloxideAdapter {
     bot: Bot,

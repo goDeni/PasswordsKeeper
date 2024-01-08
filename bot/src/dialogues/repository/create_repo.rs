@@ -6,7 +6,7 @@ use crate::{dialogues::commands::CANCEL_COMMAND, user_repo_factory::Repositories
 use anyhow::{Context, Result};
 
 use super::open_repo::OpenRepoDialogue;
-use crate::stated_dialogues::{CtxResult, DialContext, Message, MessageId, Select};
+use stated_dialogues::dialogues::{CtxResult, DialContext, Message, MessageId, Select};
 
 #[derive(Clone)]
 enum CreationState {
@@ -97,7 +97,6 @@ where
                             CtxResult::RemoveMessages(vec![message.id]),
                             CtxResult::NewCtx(Box::new(OpenRepoDialogue::new(
                                 self.factory.clone(),
-                                user_id,
                             ))),
                         ])
                     }
@@ -109,7 +108,6 @@ where
                             CtxResult::RemoveMessages(vec![message.id]),
                             CtxResult::NewCtx(Box::new(OpenRepoDialogue::new(
                                 self.factory.clone(),
-                                user_id,
                             ))),
                         ])
                     }

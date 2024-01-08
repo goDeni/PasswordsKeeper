@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
-use crate::dialogues_controller::DialCtxActions;
-use crate::stated_dialogues::MessageId;
+use crate::controller::DialCtxActions;
+use crate::dialogues::MessageId;
 
 use super::{BotAdapter, CtxResult, DialInteraction};
 

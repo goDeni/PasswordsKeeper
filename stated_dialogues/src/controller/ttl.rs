@@ -3,9 +3,9 @@ use std::time::{Duration, SystemTime};
 
 use tokio::{sync::RwLock, time::sleep};
 
-use crate::dialogues_controller::handler::process_ctx_results;
-use crate::dialogues_controller::CtxResult;
-use crate::dialogues_controller::DialCtxActions;
+use crate::controller::handler::process_ctx_results;
+use crate::controller::CtxResult;
+use crate::controller::DialCtxActions;
 
 use super::BotAdapter;
 

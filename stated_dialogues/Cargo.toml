@@ -7,6 +7,9 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.79"
-teloxide = { version = "0.12.2", features = ["macros"] }
-tokio = { version = "1.35.1", features = ["rt-multi-thread", "macros"] }
 log = "0.4.20"
+teloxide = { version = "0.12.2", features = ["macros"], optional = true }
+tokio = { version = "1.35.1", features = ["macros", "sync", "time"] }
+
+[features]
+teloxide-adapter = ["dep:teloxide"]

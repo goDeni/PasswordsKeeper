@@ -6,7 +6,7 @@ use crate::{dialogues::commands::CANCEL_COMMAND, user_repo_factory::Repositories
 use super::view_repo::ViewRepoDialog;
 use anyhow::{Context, Result};
 use sec_store::repository::{RecordsRepository, RepositoryOpenError};
-use stated_dialogues::stated_dialogues::{CtxResult, DialContext, Message, MessageId, Select};
+use stated_dialogues::dialogues::{CtxResult, DialContext, Message, MessageId, Select};
 
 pub struct OpenRepoDialogue<F, R> {
     factory: F,

@@ -4,7 +4,7 @@ pub mod ttl;
 
 use std::{future::Future, time::SystemTime};
 
-use crate::stated_dialogues::{self, ButtonPayload, DialContext, MessageId, OutgoingMessage};
+use crate::dialogues::{self, ButtonPayload, DialContext, MessageId, OutgoingMessage};
 use anyhow::{Context, Result};
 
 type AnyDialContext = dyn DialContext + Sync + Send;
@@ -41,9 +41,9 @@ pub trait BotAdapter {
 }
 
 pub enum DialInteraction {
-    Select(stated_dialogues::Select),
-    Message(stated_dialogues::Message),
-    Command(stated_dialogues::Message),
+    Select(dialogues::Select),
+    Message(dialogues::Message),
+    Command(dialogues::Message),
 }
 
 pub enum CtxResult {
@@ -113,22 +113,22 @@ impl DialogueController {
 
 fn process_context_results(
     context: Box<AnyDialContext>,
-    mut results: Vec<stated_dialogues::CtxResult>,
+    mut results: Vec<dialogues::CtxResult>,
 ) -> Result<(Option<Box<AnyDialContext>>, Vec<CtxResult>)> {
     let mut context: Option<Box<AnyDialContext>> = Some(context);
 
     loop {
-        let mut new_results: Vec<stated_dialogues::CtxResult> = vec![];
+        let mut new_results: Vec<dialogues::CtxResult> = vec![];
         for ctx_result in results {
             match ctx_result {
-                stated_dialogues::CtxResult::NewCtx(mut new_ctx) => {
+                dialogues::CtxResult::NewCtx(mut new_ctx) => {
                     if let Some(ref mut old_ctx) = context {
                         new_results.extend(old_ctx.shutdown()?);
                     }
                     new_results.extend(new_ctx.init()?);
                     context = Some(new_ctx);
                 }
-                stated_dialogues::CtxResult::CloseCtx => {
+                dialogues::CtxResult::CloseCtx => {
                     if let Some(ref mut old_ctx) = context {
                         new_results.extend(old_ctx.shutdown()?);
                     }
@@ -142,7 +142,7 @@ fn process_context_results(
         if !results.iter().any(|res| {
             matches!(
                 res,
-                stated_dialogues::CtxResult::CloseCtx | stated_dialogues::CtxResult::NewCtx(_)
+                dialogues::CtxResult::CloseCtx | dialogues::CtxResult::NewCtx(_)
             )
         }) {
             break;
@@ -154,18 +154,16 @@ fn process_context_results(
         results
             .into_iter()
             .filter_map(|result| match result {
-                stated_dialogues::CtxResult::Messages(messages) => {
-                    Some(CtxResult::Messages(messages))
-                }
-                stated_dialogues::CtxResult::RemoveMessages(msg_ids) => {
+                dialogues::CtxResult::Messages(messages) => Some(CtxResult::Messages(messages)),
+                dialogues::CtxResult::RemoveMessages(msg_ids) => {
                     Some(CtxResult::RemoveMessages(msg_ids))
                 }
-                stated_dialogues::CtxResult::Buttons(msg, buttons) => {
+                dialogues::CtxResult::Buttons(msg, buttons) => {
                     Some(CtxResult::Buttons(msg, buttons))
                 }
-                stated_dialogues::CtxResult::Nothing => None,
-                stated_dialogues::CtxResult::CloseCtx => unreachable!(),
-                stated_dialogues::CtxResult::NewCtx(_) => unreachable!(),
+                dialogues::CtxResult::Nothing => None,
+                dialogues::CtxResult::CloseCtx => unreachable!(),
+                dialogues::CtxResult::NewCtx(_) => unreachable!(),
             })
             .collect::<Vec<CtxResult>>(),
     ))

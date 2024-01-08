@@ -5,7 +5,7 @@ use sec_store::repository::RecordsRepository;
 use crate::user_repo_factory::RepositoriesFactory;
 use anyhow::Result;
 
-use stated_dialogues::stated_dialogues::{
+use stated_dialogues::dialogues::{
     ButtonPayload, CtxResult, DialContext, Message, MessageId, Select, UserId,
 };
 

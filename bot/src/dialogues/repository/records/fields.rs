@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use sec_store::record::Record;
 
-use stated_dialogues::stated_dialogues::{MessageFormat, OutgoingMessage};
+use stated_dialogues::dialogues::{MessageFormat, OutgoingMessage};
 
 pub const RECORD_NAME_FIELD: &str = "RECORD_NAME";
 pub const RECORD_PASSWD_FIELD: &str = "RECORD_PASSWD";

@@ -13,11 +13,11 @@ use teloxide::{
 };
 
 use crate::user_repo_factory::RepositoriesFactory;
-use stated_dialogues::dialogues_controller::{
+use stated_dialogues::controller::{
     handler::{handle_interaction, process_ctx_results},
     DialCtxActions,
 };
-use stated_dialogues::dialogues_controller::{teloxide::HandlerResult, DialInteraction};
+use stated_dialogues::controller::{teloxide::HandlerResult, DialInteraction};
 use std::sync::Arc;
 
 use super::{BotContext, BotState, Command};

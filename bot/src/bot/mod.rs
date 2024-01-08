@@ -11,8 +11,8 @@ use tokio::sync::RwLock;
 use crate::dialogues::hello::HelloDialogue;
 use crate::user_repo_factory::RepositoriesFactory;
 use anyhow::Result;
-use stated_dialogues::dialogues_controller::teloxide::TeloxideAdapter;
-use stated_dialogues::dialogues_controller::{CtxResult, DialCtxActions, DialogueController};
+use stated_dialogues::controller::teloxide::TeloxideAdapter;
+use stated_dialogues::controller::{CtxResult, DialCtxActions, DialogueController};
 
 #[derive(Clone, Default, Debug)]
 pub enum BotState {

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use anyhow::Result;
 use sec_store::repository::RecordsRepository;
-use stated_dialogues::stated_dialogues::{
+use stated_dialogues::dialogues::{
     ButtonPayload, CtxResult, DialContext, Message, MessageId, Select,
 };
 

@@ -5,7 +5,7 @@ use sec_store::{record::RecordId, repository::RecordsRepository};
 use super::{edit_record::EditRecordDialog, fields::record_as_message};
 use crate::dialogues::repository::view_repo::ViewRepoDialog;
 use anyhow::Result;
-use stated_dialogues::stated_dialogues::{CtxResult, DialContext, Message, MessageId, Select};
+use stated_dialogues::dialogues::{CtxResult, DialContext, Message, MessageId, Select};
 
 pub struct ViewRecordDialog<T> {
     repo: T,

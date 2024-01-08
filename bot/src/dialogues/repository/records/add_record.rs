@@ -9,8 +9,8 @@ use super::fields::{
 use crate::dialogues::commands::CANCEL_COMMAND;
 use crate::dialogues::repository::view_repo::ViewRepoDialog;
 use anyhow::Result;
-use stated_dialogues::stated_dialogues::DialContext;
-use stated_dialogues::stated_dialogues::{CtxResult, Message, MessageId, Select};
+use stated_dialogues::dialogues::DialContext;
+use stated_dialogues::dialogues::{CtxResult, Message, MessageId, Select};
 
 #[derive(Clone)]
 struct NewRecord {

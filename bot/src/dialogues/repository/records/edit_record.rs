@@ -13,7 +13,7 @@ use super::{
     view_record::ViewRecordDialog,
 };
 use crate::dialogues::{commands::CANCEL_COMMAND, repository::view_repo::ViewRepoDialog};
-use stated_dialogues::stated_dialogues::{
+use stated_dialogues::dialogues::{
     ButtonPayload, CtxResult, DialContext, Message, MessageId, Select,
 };
 

@@ -1,13 +1,14 @@
-use std::path::PathBuf;
-
+use super::UserId;
+use crate::user_repo_factory::{
+    InitRepoResult, LoadResult, RepositoriesFactory, RepositoryAlreadyExist, RepositoryLoadError,
+};
+use anyhow::{anyhow, Context};
 use sec_store::{
     repository::file::{OpenRecordsFileRepository, RecordsFileRepository},
-    repository::{OpenRepository, OpenResult},
+    repository::{OpenRepository, OpenResult, RepositoryOpenError},
 };
-
-use crate::user_repo_factory::{InitRepoResult, RepositoriesFactory, RepositoryAlreadyExist};
-
-use super::UserId;
+use std::fs::rename;
+use std::path::{Path, PathBuf};
 
 #[derive(Clone)]
 pub struct FileRepositoriesFactory(pub PathBuf);
@@ -30,6 +31,35 @@ impl RepositoriesFactory<RecordsFileRepository> for FileRepositoriesFactory {
         match OpenRecordsFileRepository(self.get_repository_path(user_id)).open(passwd) {
             Ok(rep) => Ok(rep),
             Err(err) => Err(err),
+        }
+    }
+    fn load_user_repository<P: AsRef<Path>>(
+        &self,
+        user_id: &UserId,
+        passwd: String,
+        file: P,
+    ) -> LoadResult<RecordsFileRepository> {
+        match OpenRecordsFileRepository(file.as_ref().to_path_buf()).open(passwd.clone()) {
+            Ok(_) => {
+                rename(file, self.get_repository_path(user_id))
+                    .with_context(|| format!("Failed repository save for {}", user_id))
+                    .map_err(RepositoryLoadError::UnexpectedError)?;
+
+                match self.get_user_repository(user_id, passwd) {
+                    Ok(repo) => Ok(repo),
+                    Err(err) => Err(RepositoryLoadError::UnexpectedError(anyhow!(format!(
+                        "Failed repository open after it has been loaded: {:?}",
+                        err
+                    )))),
+                }
+            }
+            Err(err) => Err(match err {
+                RepositoryOpenError::OpenError(err) => RepositoryLoadError::OpenError(err),
+                RepositoryOpenError::DoesntExist => RepositoryLoadError::UnexpectedError(anyhow!(
+                    "Repository already doesn't exists?"
+                )),
+                RepositoryOpenError::WrongPassword => RepositoryLoadError::WrongPassword,
+            }),
         }
     }
     fn initialize_user_repository(

@@ -6,6 +6,7 @@ use std::marker::PhantomData;
 use crate::{dialogues::commands::CANCEL_COMMAND, user_repo_factory::RepositoriesFactory};
 
 use super::view_repo::ViewRepoDialog;
+use crate::dialogues::commands::default_commands_handler;
 use anyhow::{Context, Result};
 use sec_store::repository::{RecordsRepository, RepositoryOpenError};
 use stated_dialogues::dialogues::{CtxResult, DialContext, Message, MessageId, Select};
@@ -90,7 +91,7 @@ where
                 CtxResult::RemoveMessages(vec![command.id]),
                 CtxResult::CloseCtx,
             ]),
-            _ => Ok(vec![CtxResult::RemoveMessages(vec![command.id])]),
+            _ => Ok(default_commands_handler(command)),
         }
     }
 
@@ -98,5 +99,8 @@ where
         msg_ids.into_iter().for_each(|msg_id| {
             self.sent_msg_ids.insert(msg_id);
         });
+    }
+    fn file_expected(&self) -> bool {
+        false
     }
 }

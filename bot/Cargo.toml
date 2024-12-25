@@ -6,15 +6,16 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.79"
+anyhow = "1.0.95"
 async-mutex = "1.4.0"
+async-trait = "0.1.83"
 dotenv = "0.15.0"
-log = "0.4.20"
+log = "0.4.22"
 pretty_env_logger = "0.5.0"
 sec_store = {path = "../sec_store"}
-stated_dialogues = { git = "https://github.com/goDeni/stated_dialogues.git", tag = "v0.0.1", version = "0.0.1", features = ["teloxide-adapter"] }
-teloxide = { version = "0.12.2", features = ["macros"] }
-tokio = { version = "1.35.1", features = ["rt-multi-thread", "macros"] }
+stated_dialogues = {path = "../stated_dialogues", features = ["teloxide-adapter-rustls", "teloxide-adapter-native-tls"]}
+teloxide = { version = "0.13.0", features = ["macros"] }
+tokio = { version = "1.42.0", features = ["rt-multi-thread", "macros"] }
 
 [dev-dependencies]
 tempdir = "0.3.7"

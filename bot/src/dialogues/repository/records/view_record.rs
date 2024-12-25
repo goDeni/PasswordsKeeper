@@ -5,6 +5,7 @@ use sec_store::{record::RecordId, repository::RecordsRepository};
 use super::{edit_record::EditRecordDialog, fields::record_as_message};
 use crate::dialogues::repository::view_repo::ViewRepoDialog;
 use anyhow::Result;
+use async_trait::async_trait;
 use stated_dialogues::dialogues::{CtxResult, DialContext, Message, MessageId, Select};
 
 pub struct ViewRecordDialog<T> {
@@ -27,11 +28,12 @@ const EDIT_RECORD: &str = "EDIT_RECORD";
 const REMOVE_RECORD: &str = "REMOVE_RECORD";
 const CLOSE_VIEW: &str = "CLOSE_VIEW";
 
+#[async_trait]
 impl<T> DialContext for ViewRecordDialog<T>
 where
     T: RecordsRepository,
 {
-    fn init(&mut self) -> Result<Vec<CtxResult>> {
+    async fn init(&mut self) -> Result<Vec<CtxResult>> {
         let result: CtxResult = match self.repo.get(&self.record_id)? {
             Some(record) => CtxResult::Buttons(
                 record_as_message(record),
@@ -47,13 +49,13 @@ where
         Ok(vec![result])
     }
 
-    fn shutdown(&mut self) -> Result<Vec<CtxResult>> {
+    async fn shutdown(&mut self) -> Result<Vec<CtxResult>> {
         Ok(vec![CtxResult::RemoveMessages(
             self.sent_msg_ids.drain().collect(),
         )])
     }
 
-    fn handle_select(&mut self, select: Select) -> Result<Vec<CtxResult>> {
+    async fn handle_select(&mut self, select: Select) -> Result<Vec<CtxResult>> {
         let result = match select.data() {
             Some(EDIT_RECORD) => CtxResult::NewCtx(Box::new(EditRecordDialog::new(
                 self.record_id.clone(),
@@ -74,11 +76,11 @@ where
         Ok(vec![result])
     }
 
-    fn handle_message(&mut self, message: Message) -> Result<Vec<CtxResult>> {
+    async fn handle_message(&mut self, message: Message) -> Result<Vec<CtxResult>> {
         Ok(vec![CtxResult::RemoveMessages(vec![message.id])])
     }
 
-    fn handle_command(&mut self, command: Message) -> Result<Vec<CtxResult>> {
+    async fn handle_command(&mut self, command: Message) -> Result<Vec<CtxResult>> {
         Ok(vec![CtxResult::RemoveMessages(vec![command.id])])
     }
 

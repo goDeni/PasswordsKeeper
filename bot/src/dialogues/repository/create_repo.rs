@@ -6,6 +6,7 @@ use crate::{dialogues::commands::CANCEL_COMMAND, user_repo_factory::Repositories
 use anyhow::{Context, Result};
 
 use super::open_repo::OpenRepoDialogue;
+use async_trait::async_trait;
 use stated_dialogues::dialogues::{CtxResult, DialContext, Message, MessageId, Select};
 
 #[derive(Clone)]
@@ -34,27 +35,28 @@ impl<F, R> CreateRepoDialogue<F, R> {
     }
 }
 
+#[async_trait]
 impl<F, R> DialContext for CreateRepoDialogue<F, R>
 where
     R: RecordsRepository,
     F: RepositoriesFactory<R>,
 {
-    fn init(&mut self) -> Result<Vec<CtxResult>> {
+    async fn init(&mut self) -> Result<Vec<CtxResult>> {
         self.creation_state = CreationState::WaitForPassword;
         Ok(vec![CtxResult::Messages(vec!["Придумайте пароль".into()])])
     }
 
-    fn shutdown(&mut self) -> Result<Vec<CtxResult>> {
+    async fn shutdown(&mut self) -> Result<Vec<CtxResult>> {
         Ok(vec![CtxResult::RemoveMessages(
             self.sent_msg_ids.drain().collect(),
         )])
     }
 
-    fn handle_select(&mut self, _select: Select) -> Result<Vec<CtxResult>> {
+    async fn handle_select(&mut self, _select: Select) -> Result<Vec<CtxResult>> {
         Ok(vec![])
     }
 
-    fn handle_message(&mut self, message: Message) -> Result<Vec<CtxResult>> {
+    async fn handle_message(&mut self, message: Message) -> Result<Vec<CtxResult>> {
         match (
             message
                 .user_id
@@ -117,7 +119,7 @@ where
         }
     }
 
-    fn handle_command(&mut self, command: Message) -> Result<Vec<CtxResult>> {
+    async fn handle_command(&mut self, command: Message) -> Result<Vec<CtxResult>> {
         match command.text() {
             Some(CANCEL_COMMAND) => Ok(vec![
                 CtxResult::RemoveMessages(vec![command.id]),

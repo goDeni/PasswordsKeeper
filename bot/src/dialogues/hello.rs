@@ -10,6 +10,7 @@ use stated_dialogues::dialogues::{
 };
 
 use super::repository::{create_repo::CreateRepoDialogue, open_repo::OpenRepoDialogue};
+use async_trait::async_trait;
 
 pub struct HelloDialogue<T, R> {
     user_id: UserId,
@@ -34,12 +35,13 @@ impl<T, R> HelloDialogue<T, R> {
 const CREATE_REPO: &str = "1";
 const OPEN_REPO: &str = "2";
 
+#[async_trait]
 impl<F, R> DialContext for HelloDialogue<F, R>
 where
     R: RecordsRepository,
     F: RepositoriesFactory<R>,
 {
-    fn init(&mut self) -> Result<Vec<CtxResult>> {
+    async fn init(&mut self) -> Result<Vec<CtxResult>> {
         match self.factory.user_has_repository(&self.user_id.0) {
             false => Ok(vec![CtxResult::Buttons(
                 "Выберите действие".into(),
@@ -58,13 +60,13 @@ where
         }
     }
 
-    fn shutdown(&mut self) -> Result<Vec<CtxResult>> {
+    async fn shutdown(&mut self) -> Result<Vec<CtxResult>> {
         Ok(vec![CtxResult::RemoveMessages(
             self.sent_msg_ids.drain().collect(),
         )])
     }
 
-    fn handle_select(&mut self, select: Select) -> Result<Vec<CtxResult>> {
+    async fn handle_select(&mut self, select: Select) -> Result<Vec<CtxResult>> {
         let result: CtxResult = match (&select.user_id, select.data()) {
             (_, Some(OPEN_REPO)) => {
                 CtxResult::NewCtx(Box::new(OpenRepoDialogue::new(self.factory.clone())))
@@ -88,11 +90,11 @@ where
         ])
     }
 
-    fn handle_message(&mut self, input: Message) -> Result<Vec<CtxResult>> {
+    async fn handle_message(&mut self, input: Message) -> Result<Vec<CtxResult>> {
         Ok(vec![CtxResult::RemoveMessages(vec![input.id])])
     }
 
-    fn handle_command(&mut self, command: Message) -> Result<Vec<CtxResult>> {
+    async fn handle_command(&mut self, command: Message) -> Result<Vec<CtxResult>> {
         Ok(vec![CtxResult::RemoveMessages(vec![command.id])])
     }
 

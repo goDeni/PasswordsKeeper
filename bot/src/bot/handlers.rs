@@ -50,10 +50,10 @@ async fn main_state_handler<F: RepositoriesFactory<R>, R: RecordsRepository>(
     log::debug!(
         "Handling message. chat_id={} from={:?}",
         msg.chat.id,
-        msg.from().map(|f| f.id)
+        msg.from.clone().map(|f| f.id)
     );
 
-    let user_id = msg.from().unwrap().id;
+    let user_id = msg.from.clone().unwrap().id;
     handle_interaction(
         &user_id.0,
         &context.bot_adapter,
@@ -92,11 +92,16 @@ async fn handle_reset_command<F: RepositoriesFactory<R>, R: RecordsRepository>(
     log::debug!(
         "Handling reset command. chat_id={} from={:?}",
         msg.chat.id,
-        msg.from().map(|f| f.id)
+        msg.from.clone().map(|f| f.id)
     );
-    let user_id = msg.from().unwrap().id;
+    let user_id = msg.from.clone().unwrap().id;
     if let Some(old_controller) = context.dial.write().await.take_controller(&user_id.0) {
-        process_ctx_results(user_id.0, old_controller.shutdown()?, &context.bot_adapter).await?;
+        process_ctx_results(
+            user_id.0,
+            old_controller.shutdown().await?,
+            &context.bot_adapter,
+        )
+        .await?;
     }
 
     handle_interaction(
@@ -116,9 +121,9 @@ async fn handle_command<F: RepositoriesFactory<R>, R: RecordsRepository>(
         "Handling {:?} command. chat_id={} from={:?}",
         msg.text(),
         msg.chat.id,
-        msg.from().map(|f| f.id)
+        msg.from.clone().map(|f| f.id)
     );
-    let user_id = msg.from().unwrap().id;
+    let user_id = msg.from.clone().unwrap().id;
     handle_interaction(
         &user_id.0,
         &context.bot_adapter,

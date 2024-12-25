@@ -9,6 +9,7 @@ use super::fields::{
 use crate::dialogues::commands::CANCEL_COMMAND;
 use crate::dialogues::repository::view_repo::ViewRepoDialog;
 use anyhow::Result;
+use async_trait::async_trait;
 use stated_dialogues::dialogues::DialContext;
 use stated_dialogues::dialogues::{CtxResult, Message, MessageId, Select};
 
@@ -72,28 +73,29 @@ impl<T> AddRecordDialog<T> {
     }
 }
 
+#[async_trait]
 impl<T> DialContext for AddRecordDialog<T>
 where
     T: RecordsRepository,
 {
-    fn init(&mut self) -> Result<Vec<CtxResult>> {
+    async fn init(&mut self) -> Result<Vec<CtxResult>> {
         Ok(vec![CtxResult::Messages(vec!["Введите пароль".into()])])
     }
 
-    fn shutdown(&mut self) -> Result<Vec<CtxResult>> {
+    async fn shutdown(&mut self) -> Result<Vec<CtxResult>> {
         Ok(vec![CtxResult::RemoveMessages(
             self.sent_msg_ids.drain().collect(),
         )])
     }
 
-    fn handle_select(&mut self, select: Select) -> Result<Vec<CtxResult>> {
+    async fn handle_select(&mut self, select: Select) -> Result<Vec<CtxResult>> {
         Ok(vec![select
             .msg_id
             .map(|msg_id| CtxResult::RemoveMessages(vec![msg_id]))
             .unwrap_or(CtxResult::Nothing)])
     }
 
-    fn handle_message(&mut self, message: Message) -> Result<Vec<CtxResult>> {
+    async fn handle_message(&mut self, message: Message) -> Result<Vec<CtxResult>> {
         let result: CtxResult = match message.text {
             Some(text) => match self.state.clone() {
                 AddRecordState::Value => {
@@ -112,12 +114,11 @@ where
                 AddRecordState::Description(mut new_record) => {
                     new_record.description = Some(text);
                     self.repo.add_record(new_record.into()).unwrap();
-                    self.repo.save().map_err(|err| {
+                    self.repo.save().inspect_err(|_err| {
                         log::error!(
                             "Failed repository saving during new record saving for {:?}",
                             message.user_id
                         );
-                        err
                     })?;
 
                     CtxResult::NewCtx(Box::new(ViewRepoDialog::new(self.repo.clone())))
@@ -129,7 +130,7 @@ where
         Ok(vec![CtxResult::RemoveMessages(vec![message.id]), result])
     }
 
-    fn handle_command(&mut self, command: Message) -> Result<Vec<CtxResult>> {
+    async fn handle_command(&mut self, command: Message) -> Result<Vec<CtxResult>> {
         match command.text() {
             Some(CANCEL_COMMAND) => Ok(vec![
                 CtxResult::RemoveMessages(vec![command.id]),

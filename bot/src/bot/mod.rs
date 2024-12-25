@@ -3,6 +3,7 @@ pub mod handlers;
 use std::sync::Arc;
 use std::{collections::HashMap, marker::PhantomData};
 
+use async_trait::async_trait;
 use sec_store::repository::RecordsRepository;
 use teloxide::Bot;
 use teloxide::{macros::BotCommands, types::UserId};
@@ -58,10 +59,11 @@ where
     }
 }
 
+#[async_trait]
 impl<F: RepositoriesFactory<R>, R: RecordsRepository> DialCtxActions for DialContext<F, R> {
-    fn new_controller(&self, user_id: u64) -> Result<(DialogueController, Vec<CtxResult>)> {
+    async fn new_controller(&self, user_id: u64) -> Result<(DialogueController, Vec<CtxResult>)> {
         let context = HelloDialogue::<F, R>::new(user_id.into(), self.factory.clone());
-        DialogueController::create(context)
+        DialogueController::create(context).await
     }
 
     fn take_controller(&mut self, user_id: &u64) -> Option<DialogueController> {

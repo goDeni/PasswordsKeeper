@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use std::collections::HashSet;
 
 use anyhow::Result;
@@ -27,11 +28,12 @@ impl<T> ViewRepoDialog<T> {
     }
 }
 
+#[async_trait]
 impl<T> DialContext for ViewRepoDialog<T>
 where
     T: RecordsRepository,
 {
-    fn init(&mut self) -> Result<Vec<CtxResult>> {
+    async fn init(&mut self) -> Result<Vec<CtxResult>> {
         let mut records_buttons = self
             .repo
             .get_records()?
@@ -64,13 +66,13 @@ where
         )])
     }
 
-    fn shutdown(&mut self) -> Result<Vec<CtxResult>> {
+    async fn shutdown(&mut self) -> Result<Vec<CtxResult>> {
         Ok(vec![CtxResult::RemoveMessages(
             self.sent_msg_ids.drain().collect(),
         )])
     }
 
-    fn handle_select(&mut self, select: Select) -> Result<Vec<CtxResult>> {
+    async fn handle_select(&mut self, select: Select) -> Result<Vec<CtxResult>> {
         let result: CtxResult = match select.data() {
             Some(CLOSE_REPO) => CtxResult::CloseCtx,
             Some(ADD_RECORD) => {
@@ -89,11 +91,11 @@ where
         Ok(vec![result])
     }
 
-    fn handle_message(&mut self, message: Message) -> Result<Vec<CtxResult>> {
+    async fn handle_message(&mut self, message: Message) -> Result<Vec<CtxResult>> {
         Ok(vec![CtxResult::RemoveMessages(vec![message.id])])
     }
 
-    fn handle_command(&mut self, command: Message) -> Result<Vec<CtxResult>> {
+    async fn handle_command(&mut self, command: Message) -> Result<Vec<CtxResult>> {
         Ok(vec![CtxResult::RemoveMessages(vec![command.id])])
     }
 

@@ -1,0 +1,3 @@
+[submodule "stated_dialogues"]
+	path = stated_dialogues
+	url = git@github.com:goDeni/stated_dialogues.git

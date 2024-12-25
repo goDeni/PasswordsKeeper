@@ -13,6 +13,7 @@ use super::{
     view_record::ViewRecordDialog,
 };
 use crate::dialogues::{commands::CANCEL_COMMAND, repository::view_repo::ViewRepoDialog};
+use async_trait::async_trait;
 use stated_dialogues::dialogues::{
     ButtonPayload, CtxResult, DialContext, Message, MessageId, Select,
 };
@@ -46,11 +47,12 @@ impl<T> EditRecordDialog<T> {
 const _CANCEL_EDIT: &str = "CANCEL_EDIT";
 const _SAVE_RESULT: &str = "SAVE_RESULT";
 
+#[async_trait]
 impl<T> DialContext for EditRecordDialog<T>
 where
     T: RecordsRepository,
 {
-    fn init(&mut self) -> Result<Vec<CtxResult>> {
+    async fn init(&mut self) -> Result<Vec<CtxResult>> {
         match self.repo.get(&self.record_id)? {
             Some(record) => Ok(vec![get_edit_record_buttons(record)]),
             None => {
@@ -65,13 +67,13 @@ where
         }
     }
 
-    fn shutdown(&mut self) -> Result<Vec<CtxResult>> {
+    async fn shutdown(&mut self) -> Result<Vec<CtxResult>> {
         Ok(vec![CtxResult::RemoveMessages(
             self.sent_msg_ids.drain().collect(),
         )])
     }
 
-    fn handle_select(&mut self, select: Select) -> Result<Vec<CtxResult>> {
+    async fn handle_select(&mut self, select: Select) -> Result<Vec<CtxResult>> {
         match select
             .data
             .with_context(|| {
@@ -123,7 +125,7 @@ where
         }
     }
 
-    fn handle_message(&mut self, message: Message) -> Result<Vec<CtxResult>> {
+    async fn handle_message(&mut self, message: Message) -> Result<Vec<CtxResult>> {
         match (self.state.clone(), message.text) {
             (DialogState::FieldEdit(field), Some(msg_text)) => {
                 let mut record = self
@@ -153,7 +155,7 @@ where
         }
     }
 
-    fn handle_command(&mut self, command: Message) -> Result<Vec<CtxResult>> {
+    async fn handle_command(&mut self, command: Message) -> Result<Vec<CtxResult>> {
         match (self.state.clone(), command.text()) {
             (_, Some(CANCEL_COMMAND)) => {
                 self.repo.cancel()?;

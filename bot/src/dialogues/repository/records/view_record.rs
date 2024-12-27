@@ -1,3 +1,4 @@
+use crate::dialogues::commands::default_commands_handler;
 use std::collections::HashSet;
 
 use sec_store::{record::RecordId, repository::RecordsRepository};
@@ -81,12 +82,15 @@ where
     }
 
     async fn handle_command(&mut self, command: Message) -> Result<Vec<CtxResult>> {
-        Ok(vec![CtxResult::RemoveMessages(vec![command.id])])
+        Ok(default_commands_handler(command))
     }
 
     fn remember_sent_messages(&mut self, msg_ids: Vec<MessageId>) {
         msg_ids.into_iter().for_each(|msg_id| {
             self.sent_msg_ids.insert(msg_id);
         });
+    }
+    fn file_expected(&self) -> bool {
+        false
     }
 }

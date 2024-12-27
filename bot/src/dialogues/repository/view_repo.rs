@@ -4,8 +4,11 @@ use std::collections::HashSet;
 use anyhow::Result;
 use sec_store::repository::RecordsRepository;
 use stated_dialogues::dialogues::{
-    ButtonPayload, CtxResult, DialContext, Message, MessageId, Select,
+    ButtonPayload, CtxResult, DialContext, Message, MessageId, OutgoingDocument, Select,
 };
+
+use super::super::commands::BACKUP_COMMAND;
+use crate::dialogues::commands::default_commands_handler;
 
 use super::records::{
     add_record::AddRecordDialog, fields::RECORD_NAME_FIELD, view_record::ViewRecordDialog,
@@ -96,12 +99,26 @@ where
     }
 
     async fn handle_command(&mut self, command: Message) -> Result<Vec<CtxResult>> {
-        Ok(vec![CtxResult::RemoveMessages(vec![command.id])])
+        Ok(match (command.text(), &command.user_id) {
+            (Some(BACKUP_COMMAND), Some(user_id)) => {
+                vec![
+                    CtxResult::Document(OutgoingDocument::new(
+                        self.repo.dump()?,
+                        format!("user_{}.json", user_id),
+                    )),
+                    CtxResult::RemoveMessages(vec![command.id]),
+                ]
+            }
+            _ => default_commands_handler(command),
+        })
     }
 
     fn remember_sent_messages(&mut self, msg_ids: Vec<MessageId>) {
         msg_ids.into_iter().for_each(|msg_id| {
             self.sent_msg_ids.insert(msg_id);
         });
+    }
+    fn file_expected(&self) -> bool {
+        false
     }
 }

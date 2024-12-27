@@ -1,3 +1,4 @@
+use crate::dialogues::commands::default_commands_handler;
 use std::collections::HashSet;
 
 use sec_store::{
@@ -167,7 +168,7 @@ where
                     ))),
                 ])
             }
-            (_, _) => Ok(vec![CtxResult::RemoveMessages(vec![command.id])]),
+            (_, _) => Ok(default_commands_handler(command)),
         }
     }
 
@@ -175,6 +176,9 @@ where
         msg_ids.into_iter().for_each(|msg_id| {
             self.sent_msg_ids.insert(msg_id);
         });
+    }
+    fn file_expected(&self) -> bool {
+        false
     }
 }
 

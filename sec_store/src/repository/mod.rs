@@ -52,6 +52,7 @@ pub trait RecordsRepository: Debug + Clone + Sync + Send + 'static {
     fn update(&mut self, record: Record) -> UpdateResult<()>;
     fn delete(&mut self, record_id: &RecordId) -> UpdateResult<()>;
     fn add_record(&mut self, record: Record) -> AddResult<()>;
+    fn dump(&self) -> Result<Vec<u8>>;
 }
 
 pub trait OpenRepository<T>

@@ -7,6 +7,7 @@ use anyhow::{anyhow, Context, Result};
 use tempfile::NamedTempFile;
 use uuid::Uuid;
 
+use super::{AddRecordError, UpdateRecordError};
 use crate::cipher::{decrypt_string, encrypt_string, DecryptionError, EncryptedData};
 use crate::record::EncryptedRecord;
 use crate::record::{Record, RecordId};
@@ -14,8 +15,7 @@ use crate::repository::{
     AddResult, OpenRepository, OpenResult, RecordsRepository, RepositoryOpenError, UpdateResult,
 };
 use serde::{Deserialize, Serialize};
-
-use super::{AddRecordError, UpdateRecordError};
+use std::io::prelude::Read;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RepositoryId(Arc<str>);
@@ -175,10 +175,18 @@ impl RecordsRepository for RecordsFileRepository {
         self.records.insert(record.id.clone(), record);
         Ok(())
     }
+    fn dump(&self) -> Result<Vec<u8>> {
+        let mut buff = Vec::new();
+        File::open(&self.file)?.read_to_end(&mut buff)?;
+
+        Ok(buff)
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::fs::File;
+    use std::io::prelude::Write;
     use tempdir::TempDir;
 
     use crate::{
@@ -340,6 +348,63 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(result, RepositoryOpenError::DoesntExist));
+        tmp_dir.close().unwrap();
+    }
+
+    #[test]
+    fn test_repository_dump() {
+        let tmp_dir = TempDir::new("test_").unwrap();
+        let pass = "One password".to_string();
+
+        let mut repo = RecordsFileRepository::new(tmp_dir.path().join("repo_file"), pass);
+        repo.save().unwrap();
+
+        let dump_res = repo.dump().unwrap();
+        assert!(!dump_res.is_empty());
+
+        tmp_dir.close().unwrap();
+    }
+
+    #[test]
+    fn test_repository_load_dumped() {
+        let tmp_dir = TempDir::new("test_").unwrap();
+        let pass = "One password".to_string();
+
+        let mut repo = RecordsFileRepository::new(tmp_dir.path().join("repo_file"), pass.clone());
+
+        repo.add_record(Record::new(vec![
+            (String::from("Login"), String::from("1")),
+            (String::from("Password"), String::from("2")),
+        ]))
+        .unwrap();
+        repo.add_record(Record::new(vec![
+            (String::from("Login"), String::from("3")),
+            (String::from("Password"), String::from("4")),
+        ]))
+        .unwrap();
+
+        repo.save().unwrap();
+
+        let dump_res = repo.dump().unwrap();
+
+        let loaded_repo_path = tmp_dir.path().join("repo_file_loads");
+        File::create(&loaded_repo_path)
+            .unwrap()
+            .write_all(&dump_res)
+            .unwrap();
+
+        let loaded_repo = OpenRecordsFileRepository(loaded_repo_path)
+            .open(pass)
+            .unwrap();
+
+        let mut expected_records = repo.get_records().unwrap();
+        let mut real_records = loaded_repo.get_records().unwrap();
+
+        expected_records.sort_by(|a, b| a.id.cmp(&b.id));
+        real_records.sort_by(|a, b| a.id.cmp(&b.id));
+
+        assert_eq!(expected_records, real_records);
+
         tmp_dir.close().unwrap();
     }
 }

@@ -1,4 +1,5 @@
 pub mod handlers;
+pub mod whitelist;
 
 use std::sync::Arc;
 use std::{collections::HashMap, marker::PhantomData};
@@ -9,12 +10,12 @@ use teloxide::Bot;
 use teloxide::{macros::BotCommands, types::UserId};
 use tokio::sync::RwLock;
 
+use crate::bot::whitelist::Whitelist;
 use crate::dialogues::hello::HelloDialogue;
 use crate::user_repo_factory::RepositoriesFactory;
 use anyhow::Result;
 use stated_dialogues::controller::teloxide::TeloxideAdapter;
 use stated_dialogues::controller::{CtxResult, DialCtxActions, DialogueController};
-use std::collections::HashSet;
 use std::path::PathBuf;
 
 #[derive(Clone, Default, Debug)]
@@ -39,7 +40,7 @@ enum Command {
 pub struct BotContext<F: RepositoriesFactory<R>, R: RecordsRepository> {
     pub dial: Arc<RwLock<DialContext<F, R>>>,
     pub bot_adapter: Arc<TeloxideAdapter>,
-    pub whitelist: HashSet<UserId>,
+    pub whitelist: Whitelist,
 }
 
 pub struct DialContext<F: RepositoriesFactory<R>, R: RecordsRepository> {
@@ -55,7 +56,7 @@ where
     F: RepositoriesFactory<R>,
     R: RecordsRepository,
 {
-    pub fn new(factory: F, bot: Bot, tmp_directory: PathBuf, whitelist: HashSet<UserId>) -> Self {
+    pub fn new(factory: F, bot: Bot, tmp_directory: PathBuf, whitelist: Whitelist) -> Self {
         BotContext {
             dial: Arc::new(RwLock::new(DialContext {
                 factory,

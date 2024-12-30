@@ -1,0 +1,16 @@
+[workspace]
+members = ["bot"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+
+license = "MIT"
+homepage = "https://github.com/goDeni/PasswordsKeeper"
+repository = "https://github.com/goDeni/PasswordsKeeper"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
+

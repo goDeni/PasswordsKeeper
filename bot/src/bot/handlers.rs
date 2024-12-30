@@ -57,7 +57,7 @@ fn filter_updates<F: RepositoriesFactory<R>, R: RecordsRepository>(
     );
 
     if let Some(user) = update.from() {
-        if context.whitelist.contains(&user.id) {
+        if context.whitelist.check_allowed(&user.id) {
             return false;
         }
     }

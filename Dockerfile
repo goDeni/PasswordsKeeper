@@ -20,4 +20,5 @@ COPY \
 WORKDIR /app
 VOLUME [ "/app" ]
 
+STOPSIGNAL SIGINT
 CMD ["bot"]

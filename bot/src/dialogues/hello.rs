@@ -37,11 +37,11 @@ impl<T, R> HelloDialogue<T, R> {
     }
 }
 
-const CREATE_REPO: &str = "1";
-const OPEN_REPO: &str = "2";
-const RESTORE_REPO: &str = "3";
-const CANCEL_RESTORE: &str = "4";
-const CONFIRM_RESTORE: &str = "5";
+const CREATE_REPO: &str = "CREATE_REPO";
+const OPEN_REPO: &str = "OPEN_REPO";
+const RESTORE_REPO: &str = "RESTORE_REPO";
+const CANCEL_RESTORE: &str = "CANCEL_RESTORE";
+const CONFIRM_RESTORE: &str = "CONFIRM_RESTORE";
 
 impl<F, R> HelloDialogue<F, R>
 where

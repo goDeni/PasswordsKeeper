@@ -5,6 +5,7 @@ resolver = "2"
 [workspace.package]
 edition = "2021"
 
+version = "0.0.7"
 license = "MIT"
 homepage = "https://github.com/goDeni/PasswordsKeeper"
 repository = "https://github.com/goDeni/PasswordsKeeper"

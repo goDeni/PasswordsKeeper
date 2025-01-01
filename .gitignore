@@ -2,6 +2,5 @@
 passwords_keeper_bot_data
 .vscode
 target/
-Cargo.lock
 .env
 whitelist

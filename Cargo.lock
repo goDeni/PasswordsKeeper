@@ -118,7 +118,7 @@ checksum = "8f68f53c83ab957f72c32642f3868eec03eb974d1fb82e453128456482613d36"
 
 [[package]]
 name = "bot"
-version = "0.0.7"
+version = "0.0.8"
 dependencies = [
  "anyhow",
  "async-mutex",
@@ -1430,7 +1430,7 @@ dependencies = [
 
 [[package]]
 name = "sec_store"
-version = "0.0.7"
+version = "0.0.8"
 dependencies = [
  "aes",
  "anyhow",

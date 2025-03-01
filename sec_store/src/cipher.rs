@@ -25,7 +25,7 @@ pub fn encrypt_string(passwd: &str, string: &str) -> EncryptedData {
     let key = digest::digest(&digest::SHA256, passwd.as_bytes());
     let mut encrypted_data = EncryptedData {
         data: string.as_bytes().to_vec(),
-        nonce: rand::thread_rng().gen(),
+        nonce: rand::rng().random(),
         hash: md5::compute(string).to_vec(),
     };
 

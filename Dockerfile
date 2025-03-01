@@ -11,7 +11,7 @@ COPY ./stated_dialogues ./stated_dialogues
 
 RUN cargo build --bin bot --verbose --release
 
-FROM --platform=$BUILDPLATFORM alpine:3.21.0 AS final_image
+FROM --platform=$BUILDPLATFORM alpine:3.21.3 AS final_image
 
 COPY \
     --from=build_stage \

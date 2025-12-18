@@ -187,7 +187,7 @@ impl RecordsRepository for RecordsFileRepository {
 mod tests {
     use std::fs::File;
     use std::io::prelude::Write;
-    use tempdir::TempDir;
+    use tempfile::TempDir;
 
     use crate::{
         record::Record,
@@ -203,7 +203,7 @@ mod tests {
 
     #[test]
     fn test_repository_add_record() -> Result<()> {
-        let tmp_dir = TempDir::new("test_").unwrap();
+        let tmp_dir = TempDir::new().unwrap();
         let file = tmp_dir.path().join("repo_file");
 
         let fields = vec![
@@ -227,7 +227,7 @@ mod tests {
 
     #[test]
     fn test_repository_saving() -> Result<()> {
-        let tmp_dir = TempDir::new("test_").unwrap();
+        let tmp_dir = TempDir::new().unwrap();
         let file = tmp_dir.path().join("repo_file");
 
         let fields = vec![
@@ -255,7 +255,7 @@ mod tests {
 
     #[test]
     fn test_repository_update_record() -> Result<()> {
-        let tmp_dir = TempDir::new("test_").unwrap();
+        let tmp_dir = TempDir::new().unwrap();
         let file = tmp_dir.path().join("repo_file");
 
         let fields = vec![
@@ -289,7 +289,7 @@ mod tests {
 
     #[test]
     fn test_repository_delete_record() -> Result<()> {
-        let tmp_dir = TempDir::new("test_").unwrap();
+        let tmp_dir = TempDir::new().unwrap();
         let file = tmp_dir.path().join("repo_file");
 
         let fields = vec![
@@ -324,7 +324,7 @@ mod tests {
 
     #[test]
     fn test_repository_open_with_wrong_passwd() {
-        let tmp_dir = TempDir::new("test_").unwrap();
+        let tmp_dir = TempDir::new().unwrap();
 
         let mut repo = RecordsFileRepository::new(
             tmp_dir.path().join("repo_file"),
@@ -342,7 +342,7 @@ mod tests {
 
     #[test]
     fn test_repository_open_missed_file() {
-        let tmp_dir = TempDir::new("test_").unwrap();
+        let tmp_dir = TempDir::new().unwrap();
         let result = OpenRecordsFileRepository(tmp_dir.path().join("any_file"))
             .open("Wrong passwd".to_string())
             .unwrap_err();
@@ -353,7 +353,7 @@ mod tests {
 
     #[test]
     fn test_repository_dump() {
-        let tmp_dir = TempDir::new("test_").unwrap();
+        let tmp_dir = TempDir::new().unwrap();
         let pass = "One password".to_string();
 
         let mut repo = RecordsFileRepository::new(tmp_dir.path().join("repo_file"), pass);
@@ -367,7 +367,7 @@ mod tests {
 
     #[test]
     fn test_repository_load_dumped() {
-        let tmp_dir = TempDir::new("test_").unwrap();
+        let tmp_dir = TempDir::new().unwrap();
         let pass = "One password".to_string();
 
         let mut repo = RecordsFileRepository::new(tmp_dir.path().join("repo_file"), pass.clone());

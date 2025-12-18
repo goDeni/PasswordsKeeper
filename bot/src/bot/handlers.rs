@@ -1,5 +1,3 @@
-use std::error::Error;
-
 use sec_store::repository::RecordsRepository;
 use teloxide::{
     dispatching::{
@@ -8,7 +6,7 @@ use teloxide::{
     },
     dptree, filter_command,
     net::Download,
-    prelude::{DependencyMap, Handler},
+    prelude::Handler,
     requests::Requester,
     types::{CallbackQuery, Message, Update},
     Bot,
@@ -20,15 +18,17 @@ use stated_dialogues::controller::handler::{dialog_expect_file, handle_interacti
 use stated_dialogues::controller::{teloxide::HandlerResult, DialInteraction};
 use std::fs::exists as file_exists;
 use std::sync::Arc;
-use tempdir::TempDir;
 use tempfile::Builder as TmpFileBuilder;
+use tempfile::TempDir;
 use tokio::fs::File as TokioFile;
 
 use super::{BotContext, BotState, Command};
 
-pub fn build_handler<F: RepositoriesFactory<R>, R: RecordsRepository>(
-) -> Handler<'static, DependencyMap, Result<(), Box<dyn Error + Send + Sync>>, DpHandlerDescription>
-{
+pub fn build_handler<F: RepositoriesFactory<R>, R: RecordsRepository>() -> Handler<
+    'static,
+    std::result::Result<(), std::boxed::Box<dyn std::error::Error + Send + Sync + 'static>>,
+    DpHandlerDescription,
+> {
     let commands_handler = filter_command::<Command, _>().endpoint(handle_command::<F, R>);
 
     let messages_hanler = Update::filter_message()

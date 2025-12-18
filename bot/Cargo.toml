@@ -10,19 +10,15 @@ repository.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.96"
-async-mutex = "1.4.0"
-async-trait = "0.1.86"
+anyhow = "1.0.100"
+async-mutex = "1.4.1"
+async-trait = "0.1.89"
 dotenv = "0.15.0"
-log = "0.4.26"
+log = "0.4.29"
 pretty_env_logger = "0.5.0"
 sec_store = {path = "../sec_store"}
 stated_dialogues = {path = "../stated_dialogues", features = ["teloxide-adapter-rustls", "teloxide-adapter-native-tls"]}
-teloxide = { version = "0.13.0", features = ["macros"] }
-tempdir = "0.3.7"
-tempfile = "3.17.1"
-thiserror = "2.0.11"
-tokio = { version = "1.43.0", features = ["rt-multi-thread", "macros"] }
-
-[dev-dependencies]
-tempdir = "0.3.7"
+teloxide = { version = "0.17.0", features = ["macros"] }
+tempfile = "3.23.0"
+thiserror = "2.0.17"
+tokio = { version = "1.48.0", features = ["rt-multi-thread", "macros"] }

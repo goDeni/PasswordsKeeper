@@ -4,14 +4,17 @@ run:
 format:
     cd sec_store && cargo fmt && cargo clippy --fix --allow-dirty
     cd bot && cargo fmt && cargo clippy --fix --allow-dirty
+    cd stated_dialogues && cargo fmt && cargo clippy --fix --allow-dirty
 
 lint:
     cd sec_store && cargo fmt --check && cargo clippy
     cd bot && cargo fmt --check && cargo clippy
+    cd stated_dialogues && cargo fmt --check && cargo clippy
 
 test: lint
     cd sec_store && cargo test
     cd bot && cargo test
+    cd stated_dialogues && cargo test
 
 build-release:
     cd bot && cargo build --release

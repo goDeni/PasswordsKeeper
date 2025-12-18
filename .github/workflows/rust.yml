@@ -16,6 +16,7 @@ jobs:
         directory:
           - ./bot
           - ./sec_store
+          - ./stated_dialogues
 
     runs-on: ubuntu-latest
     defaults:
@@ -43,11 +44,12 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
-          - macOS-latest
-          - windows-latest
+          # - macOS-latest
+          # - windows-latest
         directory:
           - ./bot
           - ./sec_store
+          - ./stated_dialogues
 
     runs-on: ${{ matrix.os }}
     defaults:

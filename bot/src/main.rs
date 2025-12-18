@@ -39,16 +39,17 @@ async fn main() {
     }
 
     let whitelist_file = curr_dir.join("whitelist");
-    let whitelist = whitelist_file
-        .exists()
-        .then(|| {
+    let whitelist = if whitelist_file.exists() {
+        {
             log::info!(
                 "Found whitelist file \"{}\"",
                 whitelist_file.to_str().unwrap()
             );
             Whitelist::read(&whitelist_file).unwrap()
-        })
-        .unwrap_or_else(Whitelist::new);
+        }
+    } else {
+        Whitelist::new()
+    };
 
     log::info!("Whitelist members: {}", whitelist);
 

@@ -63,9 +63,10 @@ impl Whitelist {
     }
 
     pub fn check_allowed(&self, user_id: &UserId) -> bool {
-        self.allowed_ids
-            .is_empty()
-            .then_some(true)
-            .unwrap_or_else(|| self.allowed_ids.contains(user_id))
+        if self.allowed_ids.is_empty() {
+            true
+        } else {
+            self.allowed_ids.contains(user_id)
+        }
     }
 }

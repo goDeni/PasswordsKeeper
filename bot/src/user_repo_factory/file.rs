@@ -91,7 +91,7 @@ mod tests {
         let user_id = "user_id".to_string();
         let passwd = "123".to_string();
 
-        let factory = FileRepositoriesFactory(tmp_dir.into_path());
+        let factory = FileRepositoriesFactory(tmp_dir.keep());
 
         assert!(!factory.user_has_repository(&user_id));
         assert!(factory.get_user_repository(&user_id, passwd).is_err());
@@ -104,7 +104,7 @@ mod tests {
         let user_id = "user_id".to_string();
         let passwd = "123".to_string();
 
-        let factory = FileRepositoriesFactory(tmp_dir.into_path());
+        let factory = FileRepositoriesFactory(tmp_dir.keep());
 
         let mut repo = factory
             .initialize_user_repository(&user_id, passwd.clone())
@@ -124,7 +124,7 @@ mod tests {
         let user_id = "user_id".to_string();
         let passwd = "123";
 
-        let factory = FileRepositoriesFactory(tmp_dir.into_path());
+        let factory = FileRepositoriesFactory(tmp_dir.keep());
 
         factory
             .initialize_user_repository(&user_id, passwd.to_string())

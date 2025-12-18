@@ -80,13 +80,13 @@ impl RepositoriesFactory<RecordsFileRepository> for FileRepositoriesFactory {
 #[cfg(test)]
 mod tests {
     use sec_store::repository::{RecordsRepository, RepositoryOpenError};
-    use tempdir::TempDir;
+    use tempfile::TempDir;
 
     use crate::user_repo_factory::{file::FileRepositoriesFactory, RepositoriesFactory};
 
     #[test]
     fn test_repo_not_exist() {
-        let tmp_dir = TempDir::new("tests_").unwrap();
+        let tmp_dir = TempDir::new().unwrap();
 
         let user_id = "user_id".to_string();
         let passwd = "123".to_string();
@@ -99,7 +99,7 @@ mod tests {
 
     #[test]
     fn test_repo_initialization() {
-        let tmp_dir = TempDir::new("tests_").unwrap();
+        let tmp_dir = TempDir::new().unwrap();
 
         let user_id = "user_id".to_string();
         let passwd = "123".to_string();
@@ -119,7 +119,7 @@ mod tests {
 
     #[test]
     fn test_repo_open_with_wrong_password() {
-        let tmp_dir = TempDir::new("tests_").unwrap();
+        let tmp_dir = TempDir::new().unwrap();
 
         let user_id = "user_id".to_string();
         let passwd = "123";

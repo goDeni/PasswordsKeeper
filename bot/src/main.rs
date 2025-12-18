@@ -12,7 +12,7 @@ use teloxide::{
     dispatching::dialogue::InMemStorage,
     prelude::{dptree, Bot, Dispatcher, LoggingErrorHandler},
 };
-use tempdir::TempDir;
+use tempfile::TempDir;
 
 #[tokio::main]
 async fn main() {
@@ -56,7 +56,7 @@ async fn main() {
     log::info!("Starting bot...");
     let bot = Bot::from_env();
 
-    let tmp_dir = TempDir::new_in(data_path.clone(), "tmp_").unwrap();
+    let tmp_dir = TempDir::new_in(data_path.clone()).unwrap();
     let factory = FileRepositoriesFactory(repositories_path);
     let bot_context = Arc::new(BotContext::new(
         factory,
@@ -64,7 +64,7 @@ async fn main() {
         tmp_dir.path().to_path_buf(),
         whitelist,
     ));
-    let documents_tempdir = Arc::new(TempDir::new_in(data_path, "documents_").unwrap());
+    let documents_tempdir = Arc::new(TempDir::new_in(data_path).unwrap());
 
     tokio::spawn(track_dialog_ttl(
         bot_context.dial.clone(),

@@ -20,8 +20,8 @@ use stated_dialogues::controller::handler::{dialog_expect_file, handle_interacti
 use stated_dialogues::controller::{teloxide::HandlerResult, DialInteraction};
 use std::fs::exists as file_exists;
 use std::sync::Arc;
-use tempdir::TempDir;
 use tempfile::Builder as TmpFileBuilder;
+use tempfile::TempDir;
 use tokio::fs::File as TokioFile;
 
 use super::{BotContext, BotState, Command};

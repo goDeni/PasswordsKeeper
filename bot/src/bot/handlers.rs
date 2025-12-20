@@ -107,11 +107,10 @@ async fn main_state_handler<F: RepositoriesFactory<R>, R: RecordsRepository>(
     ) {
         (Some(document), true) => {
             log::debug!(
-                "Got document id={} size={}. chat_id={} from={}",
+                "Got document id={} size={}. chat_id={}",
                 document.file.id,
                 document.file.size,
                 msg.chat.id,
-                user_id
             );
 
             let file = bot.get_file(document.file.id.clone()).await?;
@@ -128,11 +127,10 @@ async fn main_state_handler<F: RepositoriesFactory<R>, R: RecordsRepository>(
             file_fd.sync_all().await?;
 
             log::debug!(
-                "File downloaded. filename={:?} size={} chat_id={} from={}",
+                "File downloaded. filename={:?} size={} chat_id={}",
                 tmpfile.path().file_name(),
                 document.file.size,
                 msg.chat.id,
-                user_id
             );
 
             let res = handle_interaction(
@@ -164,11 +162,7 @@ async fn default_callback_handler<F: RepositoriesFactory<R>, R: RecordsRepositor
     query: CallbackQuery,
     context: Arc<BotContext<F, R>>,
 ) -> HandlerResult {
-    log::debug!(
-        "Callback: called, chat_id: {:?}; from: {:?}",
-        query.chat_id(),
-        query.from.id
-    );
+    log::debug!("Callback: called, chat_id: {:?}", query.chat_id(),);
 
     let user_id = query.from.id;
     log::debug!("Callback: Handling \"{:?}\"", query.data);
@@ -185,12 +179,7 @@ async fn handle_command<F: RepositoriesFactory<R>, R: RecordsRepository>(
     msg: Message,
     context: Arc<BotContext<F, R>>,
 ) -> HandlerResult {
-    log::debug!(
-        "Handling {:?} command. chat_id={} from={:?}",
-        msg.text(),
-        msg.chat.id,
-        msg.from.clone().map(|f| f.id)
-    );
+    log::debug!("Handling {:?} command. chat_id={}", msg.text(), msg.chat.id,);
     let user_id = msg.from.clone().unwrap().id;
     handle_interaction(
         &user_id.0,

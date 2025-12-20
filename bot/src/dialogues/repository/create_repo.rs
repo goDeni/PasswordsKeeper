@@ -104,9 +104,7 @@ where
                         ])
                     }
                     Err(_) => {
-                        log::warn!(
-                            "An attempt to create the existing one repository"
-                        );
+                        log::warn!("An attempt to create the existing one repository");
                         Ok(vec![
                             CtxResult::RemoveMessages(vec![message.id]),
                             CtxResult::NewCtx(Box::new(OpenRepoDialogue::new(

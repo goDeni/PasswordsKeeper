@@ -110,10 +110,7 @@ where
                         ]))
                     }
                     Err(err) => {
-                        log::error!(
-                            "Got error during repository load: {}",
-                            err
-                        );
+                        log::error!("Got error during repository load: {}", err);
                         result.push(CtxResult::Messages(vec![
                             "Не удалось восстановить БД, убедитесь что отправлен верный файл"
                                 .into(),

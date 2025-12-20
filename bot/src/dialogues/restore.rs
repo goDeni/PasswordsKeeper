@@ -111,8 +111,7 @@ where
                     }
                     Err(err) => {
                         log::error!(
-                            "Got error during repository load for user_id={}: {}",
-                            self.user_id,
+                            "Got error during repository load: {}",
                             err
                         );
                         result.push(CtxResult::Messages(vec![

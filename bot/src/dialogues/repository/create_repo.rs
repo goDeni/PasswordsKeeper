@@ -92,7 +92,7 @@ where
                 {
                     Ok(mut repo) => {
                         repo.save().map_err(|err| {
-                            log::error!("Failed repository saving for {user_id}: {err}");
+                            log::error!("Failed repository saving: {err}");
                             err
                         })?;
 
@@ -105,7 +105,7 @@ where
                     }
                     Err(_) => {
                         log::warn!(
-                            "An attempt to create the existing one repository for {user_id}"
+                            "An attempt to create the existing one repository"
                         );
                         Ok(vec![
                             CtxResult::RemoveMessages(vec![message.id]),

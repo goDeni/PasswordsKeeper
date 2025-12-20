@@ -171,7 +171,7 @@ async fn default_callback_handler<F: RepositoriesFactory<R>, R: RecordsRepositor
     );
 
     let user_id = query.from.id;
-    log::debug!("Callback ({user_id}): Handling \"{:?}\"", query.data);
+    log::debug!("Callback: Handling \"{:?}\"", query.data);
     handle_interaction(
         &user_id.0,
         &context.bot_adapter,

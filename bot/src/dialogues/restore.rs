@@ -46,7 +46,7 @@ where
 {
     async fn init(&mut self) -> Result<Vec<CtxResult>> {
         Ok(vec![CtxResult::Messages(vec![
-            "Отправьте файл который хотите использовать для восстановления".into(),
+            "Send the file you want to use for restore".into(),
         ])])
     }
 
@@ -82,9 +82,9 @@ where
                     remove_file(file)?;
                     self.file = None;
 
-                    result.push(CtxResult::Messages(vec!["Изменён загруженный файл".into()]));
+                    result.push(CtxResult::Messages(vec!["Uploaded file changed".into()]));
                 }
-                result.push(CtxResult::Messages(vec!["Введите пароль от файла".into()]));
+                result.push(CtxResult::Messages(vec!["Enter the file password".into()]));
 
                 let tmp_file = TempFileBuilder::new()
                     .prefix(&format!("document_{}_", self.user_id))
@@ -104,15 +104,13 @@ where
                         self.file = None;
                         result.push(CtxResult::NewCtx(Box::new(ViewRepoDialog::new(repo))));
                     }
-                    Err(RepositoryLoadError::WrongPassword) => {
-                        result.push(CtxResult::Messages(vec![
-                            "Неверный пароль, попробуйте ещё раз".into(),
-                        ]))
-                    }
+                    Err(RepositoryLoadError::WrongPassword) => result.push(CtxResult::Messages(
+                        vec!["Wrong password, try again".into()],
+                    )),
                     Err(err) => {
                         log::error!("Got error during repository load: {}", err);
                         result.push(CtxResult::Messages(vec![
-                            "Не удалось восстановить БД, убедитесь что отправлен верный файл"
+                            "Failed to restore database. Make sure you sent the correct file"
                                 .into(),
                         ]));
                     }

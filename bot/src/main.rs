@@ -70,7 +70,10 @@ async fn main() {
         bot_context.dial.clone(),
         bot_context.bot_adapter.clone(),
         300,
-        Some(format!("Диалог закрыт потому что не использовался {} секунд 🙈\nВведите /start чтобы инициировать новый диалог", 300)),
+        Some(format!(
+            "Dialog closed due to inactivity ({} seconds) 🙈\nType /start to start a new dialog",
+            300
+        )),
     ));
     Dispatcher::builder(
         bot,

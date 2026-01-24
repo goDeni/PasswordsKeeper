@@ -35,7 +35,7 @@ where
     F: RepositoriesFactory<R>,
 {
     async fn init(&mut self) -> Result<Vec<CtxResult>> {
-        Ok(vec![CtxResult::Messages(vec!["Введите пароль".into()])])
+        Ok(vec![CtxResult::Messages(vec!["Enter password".into()])])
     }
 
     async fn shutdown(&mut self) -> Result<Vec<CtxResult>> {
@@ -72,14 +72,14 @@ where
                     {
                         Ok(repo) => Ok(CtxResult::NewCtx(Box::new(ViewRepoDialog::new(repo)))),
                         Err(RepositoryOpenError::WrongPassword) => Ok(CtxResult::Messages(vec![
-                            "Пароль не подходит 🤨. Попробуйте еще раз".into(),
+                            "Wrong password 🤨. Try again".into(),
                         ])),
                         Err(RepositoryOpenError::DoesntExist) => Ok(CtxResult::CloseCtx),
                         Err(error) => Err(error),
                     }
                 }
                 _ => Ok(CtxResult::Messages(vec![
-                    "Это не пароль 🤨. Попробуйте еще раз".into(),
+                    "That's not a password 🤨. Try again".into(),
                 ])),
             }?,
         ])

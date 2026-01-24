@@ -100,10 +100,10 @@ where
             }
             select_payload => {
                 let field_name = match select_payload {
-                    RECORD_DESCR_FIELD => Ok("описание"),
-                    RECORD_LOGIN_FIELD => Ok("логин"),
-                    RECORD_NAME_FIELD => Ok("название"),
-                    RECORD_PASSWD_FIELD => Ok("пароль"),
+                    RECORD_DESCR_FIELD => Ok("description"),
+                    RECORD_LOGIN_FIELD => Ok("login"),
+                    RECORD_NAME_FIELD => Ok("name"),
+                    RECORD_PASSWD_FIELD => Ok("password"),
                     unexpected_field => Err(anyhow!(
                         "Selected unexpected field '{}' by user {}",
                         unexpected_field,
@@ -117,7 +117,7 @@ where
                         self.sent_msg_ids.drain().collect::<Vec<MessageId>>(),
                     ),
                     CtxResult::Messages(vec![format!(
-                        "Введите новое значение для поля '{}'",
+                        "Enter new value for field '{}'",
                         field_name
                     )
                     .into()]),
@@ -184,23 +184,23 @@ where
 
 fn get_edit_record_buttons(record: &Record) -> CtxResult {
     let mut button_rows: Vec<Vec<(ButtonPayload, String)>> =
-        vec![vec![(RECORD_NAME_FIELD.into(), "✏️ Название".into())]];
+        vec![vec![(RECORD_NAME_FIELD.into(), "✏️ Name".into())]];
 
     if record.get_field_value(RECORD_LOGIN_FIELD).is_some() {
-        button_rows.push(vec![(RECORD_LOGIN_FIELD.into(), "✏️ Логин".into())])
+        button_rows.push(vec![(RECORD_LOGIN_FIELD.into(), "✏️ Login".into())])
     }
 
     if record.get_field_value(RECORD_DESCR_FIELD).is_some() {
-        button_rows.push(vec![(RECORD_DESCR_FIELD.into(), "✏️ Описание".into())])
+        button_rows.push(vec![(RECORD_DESCR_FIELD.into(), "✏️ Description".into())])
     }
 
     if record.get_field_value(RECORD_PASSWD_FIELD).is_some() {
-        button_rows.push(vec![(RECORD_PASSWD_FIELD.into(), "✏️ Пароль".into())])
+        button_rows.push(vec![(RECORD_PASSWD_FIELD.into(), "✏️ Password".into())])
     }
 
     button_rows.extend(vec![
-        vec![(_CANCEL_EDIT.into(), "❌ Отменить".into())],
-        vec![(_SAVE_RESULT.into(), "💾 Сохранить".into())],
+        vec![(_CANCEL_EDIT.into(), "❌ Cancel".into())],
+        vec![(_SAVE_RESULT.into(), "💾 Save".into())],
     ]);
 
     CtxResult::Buttons(record_as_message(record), button_rows)

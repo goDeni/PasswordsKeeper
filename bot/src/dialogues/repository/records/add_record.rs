@@ -80,7 +80,7 @@ where
     T: RecordsRepository,
 {
     async fn init(&mut self) -> Result<Vec<CtxResult>> {
-        Ok(vec![CtxResult::Messages(vec!["Введите пароль".into()])])
+        Ok(vec![CtxResult::Messages(vec!["Enter password".into()])])
     }
 
     async fn shutdown(&mut self) -> Result<Vec<CtxResult>> {
@@ -101,16 +101,16 @@ where
             Some(text) => match self.state.clone() {
                 AddRecordState::Value => {
                     self.state = AddRecordState::Name(text);
-                    CtxResult::Messages(vec!["Введите название".into()])
+                    CtxResult::Messages(vec!["Enter name".into()])
                 }
                 AddRecordState::Name(passwd) => {
                     self.state = AddRecordState::Login(NewRecord::new(text, passwd));
-                    CtxResult::Messages(vec!["Введите логин".into()])
+                    CtxResult::Messages(vec!["Enter login".into()])
                 }
                 AddRecordState::Login(mut new_record) => {
                     new_record.login = Some(text);
                     self.state = AddRecordState::Description(new_record);
-                    CtxResult::Messages(vec!["Введите описание".into()])
+                    CtxResult::Messages(vec!["Enter description".into()])
                 }
                 AddRecordState::Description(mut new_record) => {
                     new_record.description = Some(text);

@@ -1,0 +1,13 @@
+[package]
+name = "tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow = "1.0.100"
+crossterm = "0.29"
+ratatui = "0.30"
+sec_store = { path = "../sec_store" }

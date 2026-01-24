@@ -1,5 +1,6 @@
 .DS_Store
 passwords_keeper_bot_data
+passwords_keeper_tui_data
 .vscode
 target/
 .env

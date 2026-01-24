@@ -29,7 +29,7 @@ pub enum Screen {
     RestorePath,
     RestorePassword(PathBuf),
     ViewRepo(RecordsFileRepository),
-    ViewRecord(RecordsFileRepository, RecordId),
+    ViewRecord(RecordsFileRepository, RecordId, bool), // bool = confirm_delete
     AddRecord1(RecordsFileRepository),
     AddRecord2(RecordsFileRepository, String),
     AddRecord3(RecordsFileRepository, String, String),
@@ -122,7 +122,7 @@ impl App {
                 self.draw_input_prompt(frame, area, "Restore from backup")
             }
             Screen::ViewRepo(_) => self.draw_view_repo(frame, area),
-            Screen::ViewRecord(_, _) => self.draw_view_record(frame, area),
+            Screen::ViewRecord(_, _, _) => self.draw_view_record(frame, area),
             Screen::AddRecord1(_)
             | Screen::AddRecord2(_, _)
             | Screen::AddRecord3(_, _, _)
@@ -265,7 +265,7 @@ impl App {
     }
 
     fn draw_view_record(&self, frame: &mut Frame, area: Rect) {
-        let Screen::ViewRecord(repo, rid) = &self.screen else {
+        let Screen::ViewRecord(repo, rid, confirm_delete) = &self.screen else {
             return;
         };
         let mut repo = repo.clone();
@@ -301,19 +301,36 @@ impl App {
         if let Some(d) = rec.get_field_value(RECORD_DESCR_FIELD) {
             lines.push(format!("Description: {d}"));
         }
+        if *confirm_delete {
+            lines.push(String::new());
+            lines.push("Do you really want to remove this record? (Y/N)".to_string());
+        }
         let text = lines.join("\n");
         frame.render_widget(Paragraph::new(text).wrap(Wrap { trim: true }), inner);
 
-        let instructions = Line::from(vec![
-            Span::styled("e", Style::new().cyan()),
-            Span::raw(" edit "),
-            Span::styled("d", Style::new().cyan()),
-            Span::raw(" delete "),
-            Span::styled("b", Style::new().cyan()),
-            Span::raw(" back "),
-            Span::styled("q", Style::new().cyan()),
-            Span::raw(" quit"),
-        ]);
+        let instructions = if *confirm_delete {
+            Line::from(vec![
+                Span::styled("Y", Style::new().cyan()),
+                Span::raw(" yes, remove "),
+                Span::styled("N", Style::new().cyan()),
+                Span::raw(" / "),
+                Span::styled("Esc", Style::new().cyan()),
+                Span::raw(" no, cancel "),
+                Span::styled("q", Style::new().cyan()),
+                Span::raw(" quit"),
+            ])
+        } else {
+            Line::from(vec![
+                Span::styled("e", Style::new().cyan()),
+                Span::raw(" edit "),
+                Span::styled("d", Style::new().cyan()),
+                Span::raw(" delete "),
+                Span::styled("b", Style::new().cyan()),
+                Span::raw(" back "),
+                Span::styled("q", Style::new().cyan()),
+                Span::raw(" quit"),
+            ])
+        };
         let bottom = Rect {
             y: area.y + area.height.saturating_sub(1),
             ..area
@@ -560,7 +577,7 @@ impl App {
                         && r.update(rec).is_ok()
                         && r.save().is_ok()
                     {
-                        self.screen = Screen::ViewRecord(r, rid);
+                        self.screen = Screen::ViewRecord(r, rid, false);
                         return;
                     }
                 }
@@ -612,7 +629,7 @@ impl App {
         match &mut self.screen {
             Screen::Welcome => self.handle_welcome_key(k),
             Screen::ViewRepo(_) => self.handle_view_repo_key(k),
-            Screen::ViewRecord(_, _) => self.handle_view_record_key(k),
+            Screen::ViewRecord(_, _, _) => self.handle_view_record_key(k),
             Screen::EditRecordSelect(_, _) | Screen::EditRecordValue(_, _, _) => {
                 self.handle_edit_record_key(k)
             }
@@ -709,7 +726,7 @@ impl App {
                 if sel < n_rec {
                     let rid = rows[sel].0.clone();
                     let repo = repo.clone();
-                    self.screen = Screen::ViewRecord(repo, rid);
+                    self.screen = Screen::ViewRecord(repo, rid, false);
                 } else if sel == n_rec {
                     let repo = repo.clone();
                     self.screen = Screen::AddRecord1(repo);
@@ -735,16 +752,12 @@ impl App {
     }
 
     fn handle_view_record_key(&mut self, k: KeyEvent) {
-        let Screen::ViewRecord(repo, rid) = &self.screen else {
+        let Screen::ViewRecord(repo, rid, confirm_delete) = &self.screen else {
             return;
         };
         let (mut repo, rid) = (repo.clone(), rid.clone());
         match k.code {
-            KeyCode::Char('e') => {
-                self.screen = Screen::EditRecordSelect(repo, rid);
-                self.init_list_state(0);
-            }
-            KeyCode::Char('d') => {
+            KeyCode::Char('y') | KeyCode::Char('Y') if *confirm_delete => {
                 if repo.delete(&rid).is_ok() && repo.save().is_ok() {
                     self.screen = Screen::ViewRepo(repo);
                     self.init_list_state(0);
@@ -752,7 +765,17 @@ impl App {
                     self.set_error("Delete failed");
                 }
             }
-            KeyCode::Char('b') => {
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc if *confirm_delete => {
+                self.screen = Screen::ViewRecord(repo, rid, false);
+            }
+            KeyCode::Char('e') if !*confirm_delete => {
+                self.screen = Screen::EditRecordSelect(repo, rid);
+                self.init_list_state(0);
+            }
+            KeyCode::Char('d') if !*confirm_delete => {
+                self.screen = Screen::ViewRecord(repo, rid, true);
+            }
+            KeyCode::Char('b') if !*confirm_delete => {
                 self.screen = Screen::ViewRepo(repo);
                 self.init_list_state(0);
             }
@@ -806,7 +829,7 @@ impl App {
                     }
                     KeyCode::Esc => {
                         let (repo, rid) = (repo.clone(), rid.clone());
-                        self.screen = Screen::ViewRecord(repo, rid);
+                        self.screen = Screen::ViewRecord(repo, rid, false);
                     }
                     _ => {}
                 }

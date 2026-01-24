@@ -22,6 +22,6 @@ Backup output: `{data_dir}/backup.json` (when using Backup from the repository v
 
 - **Welcome**: ↑/k ↓/j — move, Enter — select, q — quit
 - **Repository list**: Same + `a` add record, `b` backup, `c` close, Enter on item — view record
-- **Record view**: `e` edit, `d` delete, `b` back, q — quit
+- **Record view**: `e` edit, `d` delete, `b` back, q — quit. Delete asks for confirmation: **Y** to remove, **N** or **Esc** to cancel.
 - **Edit record**: ↑/k ↓/j — select field, Enter — edit, Esc — cancel
 - **Input prompts**: Type then Enter to submit, Esc to cancel

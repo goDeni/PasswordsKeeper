@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style, Stylize},
@@ -114,7 +114,7 @@ impl App {
                     Span::raw(" "),
                     Span::styled("Enter", Style::new().cyan()),
                     Span::raw(" submit, "),
-                    Span::styled("v", Style::new().cyan()),
+                    Span::styled("Ctrl+v", Style::new().cyan()),
                     Span::raw(" toggle visibility, "),
                     Span::styled("Esc", Style::new().cyan()),
                     Span::raw(" cancel"),
@@ -463,7 +463,7 @@ impl App {
                     self.input = None;
                     self.on_input_cancel();
                 }
-                KeyCode::Char('v') if inp.password_mode => {
+                KeyCode::Char('v') if inp.password_mode && k.modifiers.contains(KeyModifiers::CONTROL) => {
                     inp.password_visible = !inp.password_visible;
                 }
                 KeyCode::Char(c) => inp.push_char(c),

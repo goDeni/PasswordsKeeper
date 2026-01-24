@@ -108,6 +108,34 @@ impl App {
                 p = p.style(Style::new().dark_gray());
             }
             frame.render_widget(p, chunks[1]);
+
+            let instructions = if inp.password_mode {
+                Line::from(vec![
+                    Span::raw(" "),
+                    Span::styled("Enter", Style::new().cyan()),
+                    Span::raw(" submit, "),
+                    Span::styled("v", Style::new().cyan()),
+                    Span::raw(" toggle visibility, "),
+                    Span::styled("Esc", Style::new().cyan()),
+                    Span::raw(" cancel"),
+                ])
+            } else {
+                Line::from(vec![
+                    Span::raw(" "),
+                    Span::styled("Enter", Style::new().cyan()),
+                    Span::raw(" submit, "),
+                    Span::styled("Esc", Style::new().cyan()),
+                    Span::raw(" cancel"),
+                ])
+            };
+            let bottom = Rect {
+                y: area.y + area.height.saturating_sub(1),
+                ..area
+            };
+            frame.render_widget(
+                Paragraph::new(instructions).style(Style::new().dim()),
+                bottom,
+            );
             return;
         }
 
@@ -434,6 +462,9 @@ impl App {
                 KeyCode::Esc => {
                     self.input = None;
                     self.on_input_cancel();
+                }
+                KeyCode::Char('v') if inp.password_mode => {
+                    inp.password_visible = !inp.password_visible;
                 }
                 KeyCode::Char(c) => inp.push_char(c),
                 KeyCode::Backspace => inp.backspace(),

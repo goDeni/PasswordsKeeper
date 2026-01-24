@@ -3,6 +3,7 @@ pub struct InputState {
     pub prompt: String,
     pub buffer: String,
     pub password_mode: bool,
+    pub password_visible: bool,
 }
 
 impl InputState {
@@ -11,6 +12,7 @@ impl InputState {
             prompt: prompt.into(),
             buffer: String::new(),
             password_mode,
+            password_visible: false,
         }
     }
 
@@ -27,7 +29,7 @@ impl InputState {
     }
 
     pub fn display(&self) -> String {
-        if self.password_mode {
+        if self.password_mode && !self.password_visible {
             "*".repeat(self.buffer.len())
         } else {
             self.buffer.clone()

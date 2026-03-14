@@ -1,19 +1,41 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
 
 use anyhow::{Context, Result};
 use sec_store::repository::file::{OpenRecordsFileRepository, RecordsFileRepository};
 use sec_store::repository::{OpenRepository, RecordsRepository, RepositoryOpenError};
 
+static DATA_DIR_OVERRIDE: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
+
 /// Data directory for TUI (e.g. ./passwords_keeper_tui_data or PASSWORDS_KEEPER_TUI_DATA).
-fn data_dir() -> PathBuf {
-    std::env::var_os("PASSWORDS_KEEPER_TUI_DATA")
-        .map(PathBuf::from)
+fn configured_data_dir() -> Option<PathBuf> {
+    DATA_DIR_OVERRIDE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+}
+
+pub fn resolve_data_dir(cli_data_dir: Option<PathBuf>) -> PathBuf {
+    cli_data_dir
+        .or_else(|| std::env::var_os("PASSWORDS_KEEPER_TUI_DATA").map(PathBuf::from))
         .unwrap_or_else(|| {
             std::env::current_dir()
                 .unwrap_or_default()
                 .join("passwords_keeper_tui_data")
         })
+}
+
+pub fn configure_data_dir(data_dir: PathBuf) {
+    *DATA_DIR_OVERRIDE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(data_dir);
+}
+
+fn data_dir() -> PathBuf {
+    configured_data_dir().unwrap_or_else(|| resolve_data_dir(None))
 }
 
 fn repo_path() -> PathBuf {
@@ -57,7 +79,21 @@ pub fn open_repo(password: String) -> Result<RecordsFileRepository> {
 mod tests {
     use crate::test_helpers::ScopedTuiDataDir;
 
-    use super::{create_repo, ensure_data_dir, has_repo, open_repo};
+    use super::{create_repo, ensure_data_dir, has_repo, open_repo, resolve_data_dir};
+
+    #[test]
+    fn test_resolve_data_dir_prefers_cli_over_env() {
+        let _scope = ScopedTuiDataDir::new();
+        let path = resolve_data_dir(Some("/tmp/cli-path".into()));
+        assert_eq!(path, PathBuf::from("/tmp/cli-path"));
+    }
+
+    #[test]
+    fn test_resolve_data_dir_uses_env_when_cli_missing() {
+        let scope = ScopedTuiDataDir::new();
+        let path = resolve_data_dir(None);
+        assert_eq!(path, scope.temp_dir.path());
+    }
 
     #[test]
     fn test_ensure_data_dir_creates_directory() {
@@ -113,4 +149,6 @@ mod tests {
             .to_string()
             .contains("Repository does not exist. Create one first."));
     }
+
+    use std::path::PathBuf;
 }

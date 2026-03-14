@@ -8,12 +8,16 @@ Terminal UI for PasswordsKeeper using [ratatui](https://ratatui.rs/) and [crosst
 cargo run -p tui
 # or
 just run-tui
+# or
+cargo run -p tui -- --data-dir /path/to/passwords_keeper_tui_data
 ```
 
 ## Data directory
 
 - Default: `./passwords_keeper_tui_data` (relative to current working directory)
 - Override: set `PASSWORDS_KEEPER_TUI_DATA` to a directory path
+- CLI override: pass `--data-dir /path/to/dir`
+- Precedence: `--data-dir` overrides `PASSWORDS_KEEPER_TUI_DATA`
 
 Repository file: `{data_dir}/repo`
 

@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 anyhow = "1.0.100"
+clap = { version = "4.6.0", features = ["derive"] }
 crossterm = "0.29"
 ratatui = "0.30"
 sec_store = { path = "../sec_store" }

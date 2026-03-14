@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -11,7 +13,13 @@ use ratatui::{
 use crate::dialogues::Dialogue;
 use crate::input::InputState;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppConfig {
+    pub data_dir: PathBuf,
+}
+
 pub struct App {
+    pub config: AppConfig,
     pub screen: Box<dyn Dialogue>,
     pub input: Option<InputState>,
     pub list_state: ListState,
@@ -22,14 +30,17 @@ pub struct App {
 
 impl Default for App {
     fn default() -> Self {
-        Self::new()
+        Self::new(AppConfig {
+            data_dir: crate::repo::resolve_data_dir(None),
+        })
     }
 }
 
 impl App {
-    pub fn new() -> Self {
+    pub fn new(config: AppConfig) -> Self {
         use crate::dialogues::WelcomeDialogue;
         Self {
+            config,
             screen: Box::new(WelcomeDialogue::new(Some(0))),
             input: None,
             list_state: ListState::default(),

@@ -5,3 +5,4 @@ passwords_keeper_tui_data
 target/
 .env
 whitelist
+.codex/

@@ -193,6 +193,7 @@ mod tests {
     use crate::fields::{
         RECORD_DESCR_FIELD, RECORD_LOGIN_FIELD, RECORD_NAME_FIELD, RECORD_PASSWD_FIELD,
     };
+    use crate::test_helpers::test_password;
     use sec_store::record::Record;
     use sec_store::repository::file::{OpenRecordsFileRepository, RecordsFileRepository};
     use sec_store::repository::{OpenRepository, RecordsRepository};
@@ -203,10 +204,11 @@ mod tests {
         KeyEvent::new(code, KeyModifiers::NONE)
     }
 
-    fn make_repo_with_full_record() -> (TempDir, RecordsFileRepository, String) {
+    fn make_repo_with_full_record() -> (TempDir, RecordsFileRepository, String, String) {
         let tmp = TempDir::new().expect("temp dir");
         let path = tmp.path().join("repo");
-        let mut repo = RecordsFileRepository::new(path, "pass".to_string());
+        let repo_password = test_password();
+        let mut repo = RecordsFileRepository::new(path, repo_password.clone());
         let rec = Record::new(vec![
             (RECORD_NAME_FIELD.to_string(), "Mail".to_string()),
             (RECORD_PASSWD_FIELD.to_string(), "pw".to_string()),
@@ -216,12 +218,12 @@ mod tests {
         let id = rec.id.clone();
         repo.add_record(rec).expect("add");
         repo.save().expect("save");
-        (tmp, repo, id)
+        (tmp, repo, id, repo_password)
     }
 
     #[test]
     fn test_navigation_wraps_up() {
-        let (_tmp, repo, id) = make_repo_with_full_record();
+        let (_tmp, repo, id, _repo_password) = make_repo_with_full_record();
         let mut dialogue = EditRecordDialogue::new(repo, id, Some(0));
 
         let res = dialogue.handle_key(key(KeyCode::Up));
@@ -231,7 +233,7 @@ mod tests {
 
     #[test]
     fn test_navigation_wraps_down() {
-        let (_tmp, repo, id) = make_repo_with_full_record();
+        let (_tmp, repo, id, _repo_password) = make_repo_with_full_record();
         let mut dialogue = EditRecordDialogue::new(repo, id, Some(3));
 
         let res = dialogue.handle_key(key(KeyCode::Down));
@@ -241,7 +243,7 @@ mod tests {
 
     #[test]
     fn test_enter_name_field_starts_plain_input() {
-        let (_tmp, repo, id) = make_repo_with_full_record();
+        let (_tmp, repo, id, _repo_password) = make_repo_with_full_record();
         let mut dialogue = EditRecordDialogue::new(repo, id, Some(0));
 
         let res = dialogue.handle_key(key(KeyCode::Enter));
@@ -257,7 +259,7 @@ mod tests {
 
     #[test]
     fn test_enter_password_field_starts_password_input() {
-        let (_tmp, repo, id) = make_repo_with_full_record();
+        let (_tmp, repo, id, _repo_password) = make_repo_with_full_record();
         let mut dialogue = EditRecordDialogue::new(repo, id, Some(1));
 
         let res = dialogue.handle_key(key(KeyCode::Enter));
@@ -273,7 +275,7 @@ mod tests {
 
     #[test]
     fn test_escape_returns_to_view_record() {
-        let (_tmp, repo, id) = make_repo_with_full_record();
+        let (_tmp, repo, id, _repo_password) = make_repo_with_full_record();
         let mut dialogue = EditRecordDialogue::new(repo, id, Some(0));
 
         let res = dialogue.handle_key(key(KeyCode::Esc));
@@ -282,7 +284,7 @@ mod tests {
 
     #[test]
     fn test_input_submit_updates_record() {
-        let (tmp, repo, id) = make_repo_with_full_record();
+        let (tmp, repo, id, repo_password) = make_repo_with_full_record();
         let mut dialogue = EditRecordDialogue::new(repo, id.clone(), Some(0));
         let _ = dialogue.handle_key(key(KeyCode::Enter));
 
@@ -290,7 +292,7 @@ mod tests {
         assert!(matches!(res, DialogueResult::ChangeScreen(_)));
 
         let mut repo_after = OpenRecordsFileRepository(tmp.path().join("repo"))
-            .open("pass".to_string())
+            .open(repo_password)
             .expect("open repo");
         let rec = repo_after
             .get(&id)
@@ -305,7 +307,7 @@ mod tests {
 
     #[test]
     fn test_input_cancel_exits_edit_mode() {
-        let (_tmp, repo, id) = make_repo_with_full_record();
+        let (_tmp, repo, id, _repo_password) = make_repo_with_full_record();
         let mut dialogue = EditRecordDialogue::new(repo, id, Some(0));
         let _ = dialogue.handle_key(key(KeyCode::Enter));
         assert!(dialogue.editing_field.is_some());
@@ -319,7 +321,7 @@ mod tests {
     fn test_missing_record_returns_noop() {
         let tmp = TempDir::new().expect("temp dir");
         let path = tmp.path().join("repo");
-        let mut repo = RecordsFileRepository::new(path, "pass".to_string());
+        let mut repo = RecordsFileRepository::new(path, test_password());
         repo.save().expect("save");
 
         let mut dialogue = EditRecordDialogue::new(repo, "missing-id".to_string(), Some(0));

@@ -50,17 +50,18 @@ impl Dialogue for OpenRepoDialogue {
 mod tests {
     use crate::dialogues::{Dialogue, DialogueResult};
     use crate::repo;
-    use crate::test_helpers::ScopedTuiDataDir;
+    use crate::test_helpers::{test_password, ScopedTuiDataDir};
 
     use super::OpenRepoDialogue;
 
     #[test]
     fn test_open_repo_success_changes_screen() {
         let _scope = ScopedTuiDataDir::new();
-        repo::create_repo("pass".to_string()).expect("repo creation failed");
+        let password = test_password();
+        repo::create_repo(password.clone()).expect("repo creation failed");
 
         let mut dialogue = OpenRepoDialogue::new();
-        let res = dialogue.on_input_submit("pass".to_string());
+        let res = dialogue.on_input_submit(password);
 
         assert!(matches!(res, DialogueResult::ChangeScreen(_)));
     }
@@ -68,7 +69,7 @@ mod tests {
     #[test]
     fn test_open_repo_wrong_password_restarts_input() {
         let _scope = ScopedTuiDataDir::new();
-        repo::create_repo("pass".to_string()).expect("repo creation failed");
+        repo::create_repo(test_password()).expect("repo creation failed");
 
         let mut dialogue = OpenRepoDialogue::new();
         let res = dialogue.on_input_submit("wrong".to_string());
@@ -86,7 +87,7 @@ mod tests {
     fn test_open_repo_missing_repository_restarts_input() {
         let _scope = ScopedTuiDataDir::new();
         let mut dialogue = OpenRepoDialogue::new();
-        let res = dialogue.on_input_submit("pass".to_string());
+        let res = dialogue.on_input_submit(test_password());
 
         match res {
             DialogueResult::StartInput { prompt, password } => {

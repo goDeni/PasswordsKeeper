@@ -1,5 +1,6 @@
 use std::ffi::OsString;
 use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use tempfile::TempDir;
 
@@ -56,9 +57,17 @@ impl Drop for ScopedTuiDataDir {
     }
 }
 
+pub(crate) fn test_password() -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock must be after unix epoch")
+        .as_nanos();
+    format!("tui-secret-{}-{nanos}", std::process::id())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{acquire_env_lock, ScopedTuiDataDir};
+    use super::{acquire_env_lock, test_password, ScopedTuiDataDir};
 
     #[test]
     fn test_scoped_tui_data_dir_sets_env_to_temp_path() {
@@ -87,5 +96,10 @@ mod tests {
         let restored =
             std::env::var("PASSWORDS_KEEPER_TUI_DATA").expect("env var should be restored");
         assert_eq!(restored, "/tmp/original-tui-data");
+    }
+
+    #[test]
+    fn test_password_returns_non_empty_value() {
+        assert!(!test_password().is_empty());
     }
 }

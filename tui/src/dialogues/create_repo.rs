@@ -81,7 +81,7 @@ impl Dialogue for CreateRepoDialogue {
 mod tests {
     use crate::dialogues::{Dialogue, DialogueResult};
     use crate::repo;
-    use crate::test_helpers::ScopedTuiDataDir;
+    use crate::test_helpers::{test_password, ScopedTuiDataDir};
 
     use super::{CreateRepoDialogue, CreateRepoStep};
 
@@ -101,7 +101,7 @@ mod tests {
     fn test_first_password_moves_to_repeat_step() {
         let _scope = ScopedTuiDataDir::new();
         let mut dialogue = CreateRepoDialogue::new();
-        let res = dialogue.on_input_submit("pass".to_string());
+        let res = dialogue.on_input_submit(test_password());
 
         match res {
             DialogueResult::StartInput { prompt, password } => {
@@ -117,7 +117,7 @@ mod tests {
     fn test_repeat_password_mismatch_reprompts() {
         let _scope = ScopedTuiDataDir::new();
         let mut dialogue = CreateRepoDialogue::new();
-        let _ = dialogue.on_input_submit("pass".to_string());
+        let _ = dialogue.on_input_submit(test_password());
         let res = dialogue.on_input_submit("wrong".to_string());
 
         match res {
@@ -133,8 +133,9 @@ mod tests {
     fn test_create_repo_success_changes_screen() {
         let _scope = ScopedTuiDataDir::new();
         let mut dialogue = CreateRepoDialogue::new();
-        let _ = dialogue.on_input_submit("pass".to_string());
-        let res = dialogue.on_input_submit("pass".to_string());
+        let password = test_password();
+        let _ = dialogue.on_input_submit(password.clone());
+        let res = dialogue.on_input_submit(password);
 
         assert!(matches!(res, DialogueResult::ChangeScreen(_)));
         assert!(repo::has_repo());

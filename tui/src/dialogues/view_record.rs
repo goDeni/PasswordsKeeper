@@ -244,6 +244,7 @@ mod tests {
 
     use crate::dialogues::{Dialogue, DialogueResult};
     use crate::fields::{RECORD_NAME_FIELD, RECORD_PASSWD_FIELD};
+    use crate::test_helpers::test_password;
     use sec_store::record::Record;
     use sec_store::repository::file::{OpenRecordsFileRepository, RecordsFileRepository};
     use sec_store::repository::{OpenRepository, RecordsRepository};
@@ -258,10 +259,11 @@ mod tests {
         KeyEvent::new(KeyCode::Char('v'), KeyModifiers::CONTROL)
     }
 
-    fn make_repo_with_password_record() -> (TempDir, RecordsFileRepository, String) {
+    fn make_repo_with_password_record() -> (TempDir, RecordsFileRepository, String, String) {
         let tmp = TempDir::new().expect("temp dir");
         let path = tmp.path().join("repo");
-        let mut repo = RecordsFileRepository::new(path, "pass".to_string());
+        let repo_password = test_password();
+        let mut repo = RecordsFileRepository::new(path, repo_password.clone());
         let rec = Record::new(vec![
             (RECORD_NAME_FIELD.to_string(), "Mail".to_string()),
             (RECORD_PASSWD_FIELD.to_string(), "pw".to_string()),
@@ -269,13 +271,13 @@ mod tests {
         let id = rec.id.clone();
         repo.add_record(rec).expect("add");
         repo.save().expect("save");
-        (tmp, repo, id)
+        (tmp, repo, id, repo_password)
     }
 
     fn make_repo_without_password_record() -> (TempDir, RecordsFileRepository, String) {
         let tmp = TempDir::new().expect("temp dir");
         let path = tmp.path().join("repo");
-        let mut repo = RecordsFileRepository::new(path, "pass".to_string());
+        let mut repo = RecordsFileRepository::new(path, test_password());
         let rec = Record::new(vec![(RECORD_NAME_FIELD.to_string(), "Mail".to_string())]);
         let id = rec.id.clone();
         repo.add_record(rec).expect("add");
@@ -285,7 +287,7 @@ mod tests {
 
     #[test]
     fn test_ctrl_v_toggles_password_visibility() {
-        let (_tmp, repo, id) = make_repo_with_password_record();
+        let (_tmp, repo, id, _repo_password) = make_repo_with_password_record();
         let mut dialogue = ViewRecordDialogue::new(repo, id, false);
 
         assert!(!dialogue.password_visible);
@@ -296,7 +298,7 @@ mod tests {
 
     #[test]
     fn test_delete_key_enters_confirmation_mode() {
-        let (_tmp, repo, id) = make_repo_with_password_record();
+        let (_tmp, repo, id, _repo_password) = make_repo_with_password_record();
         let mut dialogue = ViewRecordDialogue::new(repo, id, false);
 
         let res = dialogue.handle_key(key(KeyCode::Char('d')));
@@ -306,7 +308,7 @@ mod tests {
 
     #[test]
     fn test_esc_in_confirmation_cancels_delete() {
-        let (_tmp, repo, id) = make_repo_with_password_record();
+        let (_tmp, repo, id, _repo_password) = make_repo_with_password_record();
         let mut dialogue = ViewRecordDialogue::new(repo, id, true);
 
         let res = dialogue.handle_key(key(KeyCode::Esc));
@@ -316,7 +318,7 @@ mod tests {
 
     #[test]
     fn test_n_in_confirmation_cancels_delete() {
-        let (_tmp, repo, id) = make_repo_with_password_record();
+        let (_tmp, repo, id, _repo_password) = make_repo_with_password_record();
         let mut dialogue = ViewRecordDialogue::new(repo, id, true);
 
         let res = dialogue.handle_key(key(KeyCode::Char('n')));
@@ -326,14 +328,14 @@ mod tests {
 
     #[test]
     fn test_y_in_confirmation_deletes_record_and_changes_screen() {
-        let (tmp, repo, id) = make_repo_with_password_record();
+        let (tmp, repo, id, repo_password) = make_repo_with_password_record();
         let mut dialogue = ViewRecordDialogue::new(repo, id.clone(), true);
 
         let res = dialogue.handle_key(key(KeyCode::Char('y')));
         assert!(matches!(res, DialogueResult::ChangeScreen(_)));
 
         let mut repo_after = OpenRecordsFileRepository(tmp.path().join("repo"))
-            .open("pass".to_string())
+            .open(repo_password)
             .expect("open repo");
         let found = repo_after.get(&id).expect("get");
         assert!(found.is_none());
@@ -341,7 +343,7 @@ mod tests {
 
     #[test]
     fn test_back_returns_to_repo() {
-        let (_tmp, repo, id) = make_repo_with_password_record();
+        let (_tmp, repo, id, _repo_password) = make_repo_with_password_record();
         let mut dialogue = ViewRecordDialogue::new(repo, id, false);
         let res = dialogue.handle_key(key(KeyCode::Char('b')));
         assert!(matches!(res, DialogueResult::ChangeScreen(_)));
@@ -349,7 +351,7 @@ mod tests {
 
     #[test]
     fn test_edit_returns_edit_screen() {
-        let (_tmp, repo, id) = make_repo_with_password_record();
+        let (_tmp, repo, id, _repo_password) = make_repo_with_password_record();
         let mut dialogue = ViewRecordDialogue::new(repo, id, false);
         let res = dialogue.handle_key(key(KeyCode::Char('e')));
         assert!(matches!(res, DialogueResult::ChangeScreen(_)));
@@ -359,7 +361,7 @@ mod tests {
     fn test_copy_with_missing_record_returns_error() {
         let tmp = TempDir::new().expect("temp dir");
         let path = tmp.path().join("repo");
-        let mut repo = RecordsFileRepository::new(path, "pass".to_string());
+        let mut repo = RecordsFileRepository::new(path, test_password());
         repo.save().expect("save");
 
         let mut dialogue = ViewRecordDialogue::new(repo, "missing-id".to_string(), false);

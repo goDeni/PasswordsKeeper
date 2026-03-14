@@ -144,11 +144,7 @@ impl App {
                 .border_style(Style::new().red());
             let inner = block.inner(overlay);
             frame.render_widget(block, overlay);
-            let text = if err.len() > 56 {
-                format!("{}...", &err[..53])
-            } else {
-                err.clone()
-            };
+            let text = truncate_overlay_message(err, 56);
             frame.render_widget(Paragraph::new(text).wrap(Wrap { trim: true }), inner);
         }
 
@@ -161,11 +157,7 @@ impl App {
                 .border_style(Style::new().green());
             let inner = block.inner(overlay);
             frame.render_widget(block, overlay);
-            let text = if msg.len() > 56 {
-                format!("{}...", &msg[..53])
-            } else {
-                msg.clone()
-            };
+            let text = truncate_overlay_message(msg, 56);
             frame.render_widget(Paragraph::new(text).wrap(Wrap { trim: true }), inner);
         }
     }
@@ -261,6 +253,20 @@ impl App {
     }
 }
 
+fn truncate_overlay_message(message: &str, max_chars: usize) -> String {
+    let char_count = message.chars().count();
+    if char_count <= max_chars {
+        return message.to_string();
+    }
+
+    if max_chars <= 3 {
+        return ".".repeat(max_chars);
+    }
+
+    let truncated: String = message.chars().take(max_chars - 3).collect();
+    format!("{truncated}...")
+}
+
 fn centered_rect(percent_x: u16, height: u16, r: Rect) -> Rect {
     let vertical = Layout::default()
         .direction(Direction::Vertical)
@@ -279,4 +285,23 @@ fn centered_rect(percent_x: u16, height: u16, r: Rect) -> Rect {
         ])
         .split(vertical[1]);
     horizontal[1]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::truncate_overlay_message;
+
+    #[test]
+    fn test_truncate_overlay_message_keeps_short_text() {
+        assert_eq!(truncate_overlay_message("short", 56), "short");
+    }
+
+    #[test]
+    fn test_truncate_overlay_message_handles_utf8_boundaries() {
+        let input = "Привет".repeat(20);
+        let truncated = truncate_overlay_message(&input, 56);
+
+        assert_eq!(truncated.chars().count(), 56);
+        assert!(truncated.ends_with("..."));
+    }
 }

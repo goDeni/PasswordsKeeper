@@ -51,7 +51,7 @@ impl ViewRepoDialogue {
             .collect();
 
         // Filter by search query if searching
-        if self.is_searching && !self.search_query.is_empty() {
+        if !self.search_query.is_empty() {
             let query_lower = self.search_query.to_lowercase();
             rows.retain(|(_, name, login)| {
                 let name_match = name.to_lowercase().contains(&query_lower);
@@ -252,6 +252,7 @@ mod tests {
 
     use crate::dialogues::{Dialogue, DialogueResult};
     use crate::fields::{RECORD_LOGIN_FIELD, RECORD_NAME_FIELD, RECORD_PASSWD_FIELD};
+    use crate::test_helpers::test_password;
     use sec_store::record::Record;
     use sec_store::repository::file::RecordsFileRepository;
     use sec_store::repository::RecordsRepository;
@@ -265,7 +266,7 @@ mod tests {
     fn repo_with_records() -> (TempDir, RecordsFileRepository) {
         let tmp = TempDir::new().expect("temp dir");
         let path = tmp.path().join("repo");
-        let mut repo = RecordsFileRepository::new(path, "pass".to_string());
+        let mut repo = RecordsFileRepository::new(path, test_password());
 
         let rec1 = Record::new(vec![
             (RECORD_NAME_FIELD.to_string(), "Mail".to_string()),
@@ -379,6 +380,24 @@ mod tests {
 
         let res = dialogue.handle_key(key(KeyCode::Enter));
         assert!(matches!(res, DialogueResult::ChangeScreen(_)));
+    }
+
+    #[test]
+    fn test_enter_in_search_uses_filtered_selection() {
+        let (_tmp, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(repo, Some(0));
+        let _ = dialogue.handle_key(key(KeyCode::Char('/')));
+        let _ = dialogue.handle_key(key(KeyCode::Char('o')));
+        let _ = dialogue.handle_key(key(KeyCode::Char('c')));
+
+        let res = dialogue.handle_key(key(KeyCode::Enter));
+
+        assert!(matches!(res, DialogueResult::ChangeScreen(_)));
+        assert!(!dialogue.is_searching);
+        assert_eq!(dialogue.search_query, "oc");
+        let rows = dialogue.get_filtered_records();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].1, "Github");
     }
 
     #[test]

@@ -79,7 +79,11 @@ impl Dialogue for AddRecordDialogue {
                         record_fields.password.clone(),
                     ),
                 ];
-                if let Some(l) = &record_fields.login {
+                if let Some(l) = record_fields
+                    .login
+                    .as_ref()
+                    .filter(|login| !login.is_empty())
+                {
                     fields.push((RECORD_LOGIN_FIELD.to_string(), l.clone()));
                 }
                 // Always add description field, even if empty
@@ -116,22 +120,25 @@ mod tests {
     use tempfile::TempDir;
 
     use crate::dialogues::{Dialogue, DialogueResult};
+    use crate::fields::RECORD_LOGIN_FIELD;
+    use crate::test_helpers::test_password;
     use sec_store::repository::file::{OpenRecordsFileRepository, RecordsFileRepository};
     use sec_store::repository::{OpenRepository, RecordsRepository};
 
     use super::AddRecordDialogue;
 
-    fn make_repo() -> (TempDir, RecordsFileRepository) {
+    fn make_repo() -> (TempDir, RecordsFileRepository, String) {
         let tmp = TempDir::new().expect("temp dir");
         let path = tmp.path().join("repo");
-        let mut repo = RecordsFileRepository::new(path, "pass".to_string());
+        let repo_password = test_password();
+        let mut repo = RecordsFileRepository::new(path, repo_password.clone());
         repo.save().expect("save repo");
-        (tmp, repo)
+        (tmp, repo, repo_password)
     }
 
     #[test]
     fn test_empty_password_returns_error() {
-        let (_tmp, repo) = make_repo();
+        let (_tmp, repo, _repo_password) = make_repo();
         let mut dialogue = AddRecordDialogue::new(repo);
 
         let res = dialogue.on_input_submit(String::new());
@@ -143,7 +150,7 @@ mod tests {
 
     #[test]
     fn test_password_step_moves_to_name() {
-        let (_tmp, repo) = make_repo();
+        let (_tmp, repo, _repo_password) = make_repo();
         let mut dialogue = AddRecordDialogue::new(repo);
 
         let res = dialogue.on_input_submit("pw".to_string());
@@ -158,7 +165,7 @@ mod tests {
 
     #[test]
     fn test_empty_name_returns_error() {
-        let (_tmp, repo) = make_repo();
+        let (_tmp, repo, _repo_password) = make_repo();
         let mut dialogue = AddRecordDialogue::new(repo);
         let _ = dialogue.on_input_submit("pw".to_string());
 
@@ -171,7 +178,7 @@ mod tests {
 
     #[test]
     fn test_name_step_moves_to_login() {
-        let (_tmp, repo) = make_repo();
+        let (_tmp, repo, _repo_password) = make_repo();
         let mut dialogue = AddRecordDialogue::new(repo);
         let _ = dialogue.on_input_submit("pw".to_string());
 
@@ -187,7 +194,7 @@ mod tests {
 
     #[test]
     fn test_login_step_moves_to_description() {
-        let (_tmp, repo) = make_repo();
+        let (_tmp, repo, _repo_password) = make_repo();
         let mut dialogue = AddRecordDialogue::new(repo);
         let _ = dialogue.on_input_submit("pw".to_string());
         let _ = dialogue.on_input_submit("mail".to_string());
@@ -204,7 +211,7 @@ mod tests {
 
     #[test]
     fn test_complete_flow_adds_record_and_changes_screen() {
-        let (tmp, repo) = make_repo();
+        let (tmp, repo, repo_password) = make_repo();
         let path = tmp.path().join("repo");
         let mut dialogue = AddRecordDialogue::new(repo);
         let _ = dialogue.on_input_submit("pw".to_string());
@@ -215,14 +222,14 @@ mod tests {
         assert!(matches!(res, DialogueResult::ChangeScreen(_)));
 
         let opened = OpenRecordsFileRepository(path)
-            .open("pass".to_string())
+            .open(repo_password)
             .expect("open saved repo");
         assert_eq!(opened.get_records().expect("records").len(), 1);
     }
 
     #[test]
     fn test_complete_flow_with_empty_optional_fields_still_succeeds() {
-        let (_tmp, repo) = make_repo();
+        let (_tmp, repo, _repo_password) = make_repo();
         let mut dialogue = AddRecordDialogue::new(repo);
         let _ = dialogue.on_input_submit("pw".to_string());
         let _ = dialogue.on_input_submit("mail".to_string());
@@ -234,9 +241,33 @@ mod tests {
 
     #[test]
     fn test_cancel_changes_to_view_repo() {
-        let (_tmp, repo) = make_repo();
+        let (_tmp, repo, _repo_password) = make_repo();
         let mut dialogue = AddRecordDialogue::new(repo);
         let res = dialogue.on_input_cancel();
         assert!(matches!(res, DialogueResult::ChangeScreen(_)));
+    }
+
+    #[test]
+    fn test_empty_login_is_not_persisted() {
+        let (tmp, repo, repo_password) = make_repo();
+        let path = tmp.path().join("repo");
+        let mut dialogue = AddRecordDialogue::new(repo);
+        let _ = dialogue.on_input_submit("record-password".to_string());
+        let _ = dialogue.on_input_submit("mail".to_string());
+        let _ = dialogue.on_input_submit(String::new());
+
+        let res = dialogue.on_input_submit(String::new());
+        assert!(matches!(res, DialogueResult::ChangeScreen(_)));
+
+        let opened = OpenRecordsFileRepository(path)
+            .open(repo_password)
+            .expect("open saved repo");
+        let record = opened
+            .get_records()
+            .expect("records")
+            .into_iter()
+            .next()
+            .expect("record must exist");
+        assert!(record.get_field_value(RECORD_LOGIN_FIELD).is_none());
     }
 }

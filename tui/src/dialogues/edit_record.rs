@@ -13,6 +13,7 @@ use crate::dialogues::{Dialogue, DialogueResult};
 use crate::fields::{
     RECORD_DESCR_FIELD, RECORD_LOGIN_FIELD, RECORD_NAME_FIELD, RECORD_PASSWD_FIELD,
 };
+use crate::runtime::block_on;
 
 type RecordId = String;
 
@@ -47,8 +48,8 @@ impl Dialogue for EditRecordDialogue {
         frame.render_widget(block, area);
 
         if let Some(ref field) = self.editing_field {
-            let mut r = self.repo.clone();
-            if let Ok(Some(rec)) = r.get(&self.record_id) {
+            let r = self.repo.clone();
+            if let Ok(Some(rec)) = block_on(r.get(&self.record_id)) {
                 let val = rec.get_field_value(field).unwrap_or_default();
                 let label = match field.as_str() {
                     RECORD_NAME_FIELD => "Name",
@@ -61,9 +62,9 @@ impl Dialogue for EditRecordDialogue {
                 frame.render_widget(Paragraph::new(text).wrap(Wrap { trim: true }), inner);
             }
         } else {
-            let mut r = self.repo.clone();
-            let rec = match r.get(&self.record_id) {
-                Ok(Some(x)) => x.clone(),
+            let r = self.repo.clone();
+            let rec = match block_on(r.get(&self.record_id)) {
+                Ok(Some(x)) => x,
                 _ => return,
             };
             let mut items = vec![ListItem::new("Name"), ListItem::new("Password")];
@@ -108,9 +109,9 @@ impl Dialogue for EditRecordDialogue {
             return DialogueResult::NoOp;
         }
 
-        let mut r = self.repo.clone();
-        let rec = match r.get(&self.record_id) {
-            Ok(Some(x)) => x.clone(),
+        let r = self.repo.clone();
+        let rec = match block_on(r.get(&self.record_id)) {
+            Ok(Some(x)) => x,
             _ => return DialogueResult::NoOp,
         };
         let mut fields = vec![RECORD_NAME_FIELD, RECORD_PASSWD_FIELD];
@@ -160,11 +161,10 @@ impl Dialogue for EditRecordDialogue {
         if let Some(field) = self.editing_field.clone() {
             let mut r = self.repo.clone();
             let rid = self.record_id.clone();
-            if let Ok(Some(rec)) = r.get(&rid) {
-                let mut rec = rec.clone();
+            if let Ok(Some(mut rec)) = block_on(r.get(&rid)) {
                 if rec.update_field(field.clone(), value).is_ok()
-                    && r.update(rec).is_ok()
-                    && r.save().is_ok()
+                    && block_on(r.update(rec)).is_ok()
+                    && block_on(r.save()).is_ok()
                 {
                     return DialogueResult::ChangeScreen(Box::new(
                         crate::dialogues::view_record::ViewRecordDialogue::new(r, rid, false),
@@ -193,6 +193,7 @@ mod tests {
     use crate::fields::{
         RECORD_DESCR_FIELD, RECORD_LOGIN_FIELD, RECORD_NAME_FIELD, RECORD_PASSWD_FIELD,
     };
+    use crate::runtime::block_on;
     use crate::test_helpers::test_password;
     use sec_store::record::Record;
     use sec_store::repository::file::{OpenRecordsFileRepository, RecordsFileRepository};
@@ -216,8 +217,8 @@ mod tests {
             (RECORD_DESCR_FIELD.to_string(), "desc".to_string()),
         ]);
         let id = rec.id.clone();
-        repo.add_record(rec).expect("add");
-        repo.save().expect("save");
+        block_on(repo.add_record(rec)).expect("add");
+        block_on(repo.save()).expect("save");
         (tmp, repo, id, repo_password)
     }
 
@@ -291,14 +292,11 @@ mod tests {
         let res = dialogue.on_input_submit("New Mail".to_string());
         assert!(matches!(res, DialogueResult::ChangeScreen(_)));
 
-        let mut repo_after = OpenRecordsFileRepository(tmp.path().join("repo"))
-            .open(repo_password)
-            .expect("open repo");
-        let rec = repo_after
-            .get(&id)
+        let mut repo_after = OpenRecordsFileRepository(tmp.path().join("repo")).open(repo_password);
+        let mut repo_after = block_on(repo_after).expect("open repo");
+        let rec = block_on(repo_after.get(&id))
             .expect("get")
-            .expect("record must exist")
-            .clone();
+            .expect("record must exist");
         assert_eq!(
             rec.get_field_value(RECORD_NAME_FIELD).as_deref(),
             Some("New Mail")
@@ -322,7 +320,7 @@ mod tests {
         let tmp = TempDir::new().expect("temp dir");
         let path = tmp.path().join("repo");
         let mut repo = RecordsFileRepository::new(path, test_password());
-        repo.save().expect("save");
+        block_on(repo.save()).expect("save");
 
         let mut dialogue = EditRecordDialogue::new(repo, "missing-id".to_string(), Some(0));
         let res = dialogue.handle_key(key(KeyCode::Enter));

@@ -5,6 +5,7 @@ mod fields;
 mod input;
 mod record_fields;
 mod repo;
+mod runtime;
 #[cfg(test)]
 mod test_helpers;
 

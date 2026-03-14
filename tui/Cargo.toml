@@ -12,6 +12,7 @@ clap = { version = "4.6.0", features = ["derive"] }
 crossterm = "0.29"
 ratatui = "0.30"
 sec_store = { path = "../sec_store" }
+tokio = { version = "1.48.0", features = ["rt", "sync"] }
 
 [dev-dependencies]
 tempfile = "3.23.0"

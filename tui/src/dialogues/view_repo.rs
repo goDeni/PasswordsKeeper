@@ -13,6 +13,7 @@ use sec_store::repository::RecordsRepository;
 
 use crate::dialogues::{Dialogue, DialogueResult};
 use crate::fields::{RECORD_LOGIN_FIELD, RECORD_NAME_FIELD};
+use crate::runtime::block_on;
 
 type RecordId = String;
 
@@ -37,7 +38,7 @@ impl ViewRepoDialogue {
     }
 
     fn get_filtered_records(&self) -> Vec<(RecordId, String)> {
-        let records = self.repo.get_records().unwrap_or_default();
+        let records = block_on(self.repo.get_records()).unwrap_or_default();
         // Collect records with both name and login for filtering
         let mut rows: Vec<(RecordId, String, Option<String>)> = records
             .iter()
@@ -252,6 +253,7 @@ mod tests {
 
     use crate::dialogues::{Dialogue, DialogueResult};
     use crate::fields::{RECORD_LOGIN_FIELD, RECORD_NAME_FIELD, RECORD_PASSWD_FIELD};
+    use crate::runtime::block_on;
     use crate::test_helpers::test_password;
     use sec_store::record::Record;
     use sec_store::repository::file::RecordsFileRepository;
@@ -282,9 +284,9 @@ mod tests {
             (RECORD_LOGIN_FIELD.to_string(), "octocat".to_string()),
         ]);
 
-        repo.add_record(rec1).expect("add rec1");
-        repo.add_record(rec2).expect("add rec2");
-        repo.save().expect("save repo");
+        block_on(repo.add_record(rec1)).expect("add rec1");
+        block_on(repo.add_record(rec2)).expect("add rec2");
+        block_on(repo.save()).expect("save repo");
         (tmp, repo)
     }
 

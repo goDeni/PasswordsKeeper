@@ -4,6 +4,7 @@ use sec_store::repository::file::RecordsFileRepository;
 
 use crate::dialogues::{Dialogue, DialogueResult};
 use crate::record_fields::RecordFields;
+use crate::runtime::block_on;
 
 #[derive(Debug)]
 pub struct AddRecordDialogue {
@@ -90,10 +91,10 @@ impl Dialogue for AddRecordDialogue {
                 let desc_value = record_fields.description.as_deref().unwrap_or("");
                 fields.push((RECORD_DESCR_FIELD.to_string(), desc_value.to_string()));
                 let record = Record::new(fields);
-                if let Err(e) = self.repo.add_record(record) {
+                if let Err(e) = block_on(self.repo.add_record(record)) {
                     return DialogueResult::Error(e.to_string());
                 }
-                if let Err(e) = self.repo.save() {
+                if let Err(e) = block_on(self.repo.save()) {
                     return DialogueResult::Error(e.to_string());
                 }
                 // Clone repo for the new screen, keep original in dialogue
@@ -121,6 +122,7 @@ mod tests {
 
     use crate::dialogues::{Dialogue, DialogueResult};
     use crate::fields::RECORD_LOGIN_FIELD;
+    use crate::runtime::block_on;
     use crate::test_helpers::test_password;
     use sec_store::repository::file::{OpenRecordsFileRepository, RecordsFileRepository};
     use sec_store::repository::{OpenRepository, RecordsRepository};
@@ -132,7 +134,7 @@ mod tests {
         let path = tmp.path().join("repo");
         let repo_password = test_password();
         let mut repo = RecordsFileRepository::new(path, repo_password.clone());
-        repo.save().expect("save repo");
+        block_on(repo.save()).expect("save repo");
         (tmp, repo, repo_password)
     }
 
@@ -221,10 +223,9 @@ mod tests {
         let res = dialogue.on_input_submit("desc".to_string());
         assert!(matches!(res, DialogueResult::ChangeScreen(_)));
 
-        let opened = OpenRecordsFileRepository(path)
-            .open(repo_password)
-            .expect("open saved repo");
-        assert_eq!(opened.get_records().expect("records").len(), 1);
+        let opened = OpenRecordsFileRepository(path).open(repo_password);
+        let opened = block_on(opened).expect("open saved repo");
+        assert_eq!(block_on(opened.get_records()).expect("records").len(), 1);
     }
 
     #[test]
@@ -259,11 +260,9 @@ mod tests {
         let res = dialogue.on_input_submit(String::new());
         assert!(matches!(res, DialogueResult::ChangeScreen(_)));
 
-        let opened = OpenRecordsFileRepository(path)
-            .open(repo_password)
-            .expect("open saved repo");
-        let record = opened
-            .get_records()
+        let opened = OpenRecordsFileRepository(path).open(repo_password);
+        let opened = block_on(opened).expect("open saved repo");
+        let record = block_on(opened.get_records())
             .expect("records")
             .into_iter()
             .next()

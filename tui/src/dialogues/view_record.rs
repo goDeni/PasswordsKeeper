@@ -15,6 +15,7 @@ use crate::dialogues::{Dialogue, DialogueResult};
 use crate::fields::{
     RECORD_DESCR_FIELD, RECORD_LOGIN_FIELD, RECORD_NAME_FIELD, RECORD_PASSWD_FIELD,
 };
+use crate::runtime::block_on;
 
 type RecordId = String;
 
@@ -46,9 +47,9 @@ impl Dialogue for ViewRecordDialogue {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
-        let mut repo = self.repo.clone();
-        let rec = match repo.get(&self.record_id) {
-            Ok(Some(r)) => r.clone(),
+        let repo = self.repo.clone();
+        let rec = match block_on(repo.get(&self.record_id)) {
+            Ok(Some(r)) => r,
             _ => {
                 let p = Paragraph::new("Record not found.");
                 frame.render_widget(p, inner);
@@ -138,7 +139,7 @@ impl Dialogue for ViewRecordDialogue {
         match k.code {
             KeyCode::Char('y') | KeyCode::Char('Y') if self.confirm_delete => {
                 let mut r = self.repo.clone();
-                if r.delete(&rid).is_ok() && r.save().is_ok() {
+                if block_on(r.delete(&rid)).is_ok() && block_on(r.save()).is_ok() {
                     DialogueResult::ChangeScreen(Box::new(
                         crate::dialogues::view_repo::ViewRepoDialogue::new(r, Some(0)),
                     ))
@@ -151,8 +152,8 @@ impl Dialogue for ViewRecordDialogue {
                 DialogueResult::NoOp
             }
             KeyCode::Char('c') if !self.confirm_delete => {
-                let mut repo = self.repo.clone();
-                if let Ok(Some(rec)) = repo.get(&rid) {
+                let repo = self.repo.clone();
+                if let Ok(Some(rec)) = block_on(repo.get(&rid)) {
                     if let Some(password) = rec.get_field_value(RECORD_PASSWD_FIELD) {
                         match std::process::Command::new("wl-copy")
                             .stdin(std::process::Stdio::piped())
@@ -244,6 +245,7 @@ mod tests {
 
     use crate::dialogues::{Dialogue, DialogueResult};
     use crate::fields::{RECORD_NAME_FIELD, RECORD_PASSWD_FIELD};
+    use crate::runtime::block_on;
     use crate::test_helpers::test_password;
     use sec_store::record::Record;
     use sec_store::repository::file::{OpenRecordsFileRepository, RecordsFileRepository};
@@ -269,8 +271,8 @@ mod tests {
             (RECORD_PASSWD_FIELD.to_string(), "pw".to_string()),
         ]);
         let id = rec.id.clone();
-        repo.add_record(rec).expect("add");
-        repo.save().expect("save");
+        block_on(repo.add_record(rec)).expect("add");
+        block_on(repo.save()).expect("save");
         (tmp, repo, id, repo_password)
     }
 
@@ -280,8 +282,8 @@ mod tests {
         let mut repo = RecordsFileRepository::new(path, test_password());
         let rec = Record::new(vec![(RECORD_NAME_FIELD.to_string(), "Mail".to_string())]);
         let id = rec.id.clone();
-        repo.add_record(rec).expect("add");
-        repo.save().expect("save");
+        block_on(repo.add_record(rec)).expect("add");
+        block_on(repo.save()).expect("save");
         (tmp, repo, id)
     }
 
@@ -334,10 +336,9 @@ mod tests {
         let res = dialogue.handle_key(key(KeyCode::Char('y')));
         assert!(matches!(res, DialogueResult::ChangeScreen(_)));
 
-        let mut repo_after = OpenRecordsFileRepository(tmp.path().join("repo"))
-            .open(repo_password)
-            .expect("open repo");
-        let found = repo_after.get(&id).expect("get");
+        let mut repo_after = OpenRecordsFileRepository(tmp.path().join("repo")).open(repo_password);
+        let mut repo_after = block_on(repo_after).expect("open repo");
+        let found = block_on(repo_after.get(&id)).expect("get");
         assert!(found.is_none());
     }
 
@@ -362,7 +363,7 @@ mod tests {
         let tmp = TempDir::new().expect("temp dir");
         let path = tmp.path().join("repo");
         let mut repo = RecordsFileRepository::new(path, test_password());
-        repo.save().expect("save");
+        block_on(repo.save()).expect("save");
 
         let mut dialogue = ViewRecordDialogue::new(repo, "missing-id".to_string(), false);
         let res = dialogue.handle_key(key(KeyCode::Char('c')));

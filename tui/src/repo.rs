@@ -6,6 +6,8 @@ use anyhow::{Context, Result};
 use sec_store::repository::file::{OpenRecordsFileRepository, RecordsFileRepository};
 use sec_store::repository::{OpenRepository, RecordsRepository, RepositoryOpenError};
 
+use crate::runtime::block_on;
+
 static DATA_DIR_OVERRIDE: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
 
 /// Data directory for TUI (e.g. ./passwords_keeper_tui_data or PASSWORDS_KEEPER_TUI_DATA).
@@ -58,12 +60,12 @@ pub fn create_repo(password: String) -> Result<RecordsFileRepository> {
     ensure_data_dir()?;
     let path = repo_path();
     let mut repo = RecordsFileRepository::new(path, password);
-    repo.save()?;
+    block_on(repo.save())?;
     Ok(repo)
 }
 
 pub fn open_repo(password: String) -> Result<RecordsFileRepository> {
-    match OpenRecordsFileRepository(repo_path()).open(password) {
+    match block_on(OpenRecordsFileRepository(repo_path()).open(password)) {
         Ok(r) => Ok(r),
         Err(RepositoryOpenError::WrongPassword) => {
             anyhow::bail!("Wrong password")

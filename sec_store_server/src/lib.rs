@@ -1,3 +1,5 @@
+pub mod api;
+
 use std::collections::HashMap;
 use std::io::{BufReader, Cursor};
 use std::net::SocketAddr;
@@ -5,27 +7,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
-use axum::{
-    extract::{Path as AxumPath, State},
-    http::{header, StatusCode},
-    response::IntoResponse,
-    routing::{delete, get, post},
-    Json, Router,
-};
+use axum::{http::StatusCode, Router};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use rustls::server::WebPkiClientVerifier;
 use rustls::{RootCertStore, ServerConfig};
-use sec_store::record::{Record, RecordId};
 use sec_store::repository::file::{NamedFileRepositories, RecordsFileRepository};
-use sec_store::repository::remote::{
-    AddRecordRequest, CreateRepositoryRequest, ErrorResponse, OpenRepositoryRequest,
-    OpenRepositoryResponse, UpdateRecordRequest,
-};
-use sec_store::repository::{
-    CreateRepositoryError, RecordsRepository, RepositoriesSource, RepositoryOpenError,
-    UpdateRecordError,
-};
-use serde::Serialize;
+use sec_store::repository::{CreateRepositoryError, RepositoryOpenError, UpdateRecordError};
 use tokio::sync::{Mutex, RwLock};
 use tower_http::trace::TraceLayer;
 use uuid::Uuid;
@@ -46,9 +33,9 @@ pub struct AppState {
 }
 
 #[derive(Debug)]
-struct SessionState {
-    repository: RecordsFileRepository,
-    persisted_snapshot: Vec<u8>,
+pub(crate) struct SessionState {
+    pub(crate) repository: RecordsFileRepository,
+    pub(crate) persisted_snapshot: Vec<u8>,
 }
 
 impl AppState {
@@ -63,7 +50,7 @@ impl AppState {
         })
     }
 
-    async fn insert_session(&self, repository: RecordsFileRepository) -> Result<String> {
+    pub(crate) async fn insert_session(&self, repository: RecordsFileRepository) -> Result<String> {
         let session_id = Uuid::new_v4().to_string();
         let persisted_snapshot = repository.persisted_dump().await?;
         self.sessions.write().await.insert(
@@ -76,7 +63,7 @@ impl AppState {
         Ok(session_id)
     }
 
-    async fn get_session(
+    pub(crate) async fn get_session(
         &self,
         session_id: &str,
     ) -> std::result::Result<Arc<Mutex<SessionState>>, ApiError> {
@@ -91,23 +78,7 @@ impl AppState {
 
 pub fn app(state: AppState) -> Router {
     Router::new()
-        .route("/repositories/{repository_name}", post(create_repository))
-        .route(
-            "/repositories/{repository_name}/sessions",
-            post(open_repository),
-        )
-        .route("/sessions/{session_id}", delete(close_session))
-        .route(
-            "/sessions/{session_id}/records",
-            get(list_records).post(add_record),
-        )
-        .route(
-            "/sessions/{session_id}/records/{record_id}",
-            get(get_record).put(update_record).delete(delete_record),
-        )
-        .route("/sessions/{session_id}/save", post(save_session))
-        .route("/sessions/{session_id}/cancel", post(cancel_session))
-        .route("/sessions/{session_id}/export", get(export_repository))
+        .merge(api::router())
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
@@ -148,187 +119,6 @@ pub async fn serve(config: ServerConfigPaths) -> Result<()> {
         .serve(app(state).into_make_service())
         .await
         .context("Server exited with error")
-}
-
-async fn create_repository(
-    State(state): State<AppState>,
-    AxumPath(repository_name): AxumPath<String>,
-    Json(request): Json<CreateRepositoryRequest>,
-) -> Result<impl IntoResponse, ApiError> {
-    state
-        .repositories
-        .create_repository(&repository_name, request.password)
-        .await
-        .map_err(ApiError::from_create_error)?;
-
-    Ok((StatusCode::CREATED, Json(SimpleStatus::new("created"))))
-}
-
-async fn open_repository(
-    State(state): State<AppState>,
-    AxumPath(repository_name): AxumPath<String>,
-    Json(request): Json<OpenRepositoryRequest>,
-) -> Result<Json<OpenRepositoryResponse>, ApiError> {
-    let repository = state
-        .repositories
-        .open_repository(&repository_name, request.password)
-        .await
-        .map_err(ApiError::from_open_error)?;
-    let session_id = state
-        .insert_session(repository)
-        .await
-        .map_err(ApiError::internal)?;
-    Ok(Json(OpenRepositoryResponse { session_id }))
-}
-
-async fn close_session(
-    State(state): State<AppState>,
-    AxumPath(session_id): AxumPath<String>,
-) -> impl IntoResponse {
-    let removed = state.sessions.write().await.remove(&session_id);
-    if removed.is_some() {
-        StatusCode::NO_CONTENT
-    } else {
-        StatusCode::NOT_FOUND
-    }
-}
-
-async fn list_records(
-    State(state): State<AppState>,
-    AxumPath(session_id): AxumPath<String>,
-) -> Result<Json<Vec<Record>>, ApiError> {
-    let session = state.get_session(&session_id).await?;
-    let session = session.lock().await;
-    Ok(Json(
-        session
-            .repository
-            .get_records()
-            .await
-            .map_err(ApiError::internal)?,
-    ))
-}
-
-async fn get_record(
-    State(state): State<AppState>,
-    AxumPath((session_id, record_id)): AxumPath<(String, String)>,
-) -> Result<Json<Record>, ApiError> {
-    let session = state.get_session(&session_id).await?;
-    let session = session.lock().await;
-    let record = session
-        .repository
-        .get(&record_id)
-        .await
-        .map_err(ApiError::internal)?
-        .ok_or_else(|| ApiError::not_found("Record does not exist"))?;
-    Ok(Json(record))
-}
-
-async fn add_record(
-    State(state): State<AppState>,
-    AxumPath(session_id): AxumPath<String>,
-    Json(request): Json<AddRecordRequest>,
-) -> Result<impl IntoResponse, ApiError> {
-    let session = state.get_session(&session_id).await?;
-    let mut session = session.lock().await;
-    session
-        .repository
-        .add_record(request.record)
-        .await
-        .map_err(ApiError::from_add_error)?;
-    Ok((StatusCode::CREATED, Json(SimpleStatus::new("created"))))
-}
-
-async fn update_record(
-    State(state): State<AppState>,
-    AxumPath((session_id, record_id)): AxumPath<(String, String)>,
-    Json(request): Json<UpdateRecordRequest>,
-) -> Result<Json<SimpleStatus>, ApiError> {
-    if request.record.id != record_id {
-        return Err(ApiError::bad_request(
-            "Record id in path and payload must match",
-        ));
-    }
-
-    let session = state.get_session(&session_id).await?;
-    let mut session = session.lock().await;
-    session
-        .repository
-        .update(request.record)
-        .await
-        .map_err(ApiError::from_update_error)?;
-    Ok(Json(SimpleStatus::new("updated")))
-}
-
-async fn delete_record(
-    State(state): State<AppState>,
-    AxumPath((session_id, record_id)): AxumPath<(String, RecordId)>,
-) -> Result<StatusCode, ApiError> {
-    let session = state.get_session(&session_id).await?;
-    let mut session = session.lock().await;
-    session
-        .repository
-        .delete(&record_id)
-        .await
-        .map_err(ApiError::from_update_error)?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
-async fn save_session(
-    State(state): State<AppState>,
-    AxumPath(session_id): AxumPath<String>,
-) -> Result<Json<SimpleStatus>, ApiError> {
-    let session = state.get_session(&session_id).await?;
-    let mut session = session.lock().await;
-    let current_persisted = session
-        .repository
-        .persisted_dump()
-        .await
-        .map_err(ApiError::internal)?;
-    if current_persisted != session.persisted_snapshot {
-        return Err(ApiError::conflict(
-            "Repository changed in another session. Reopen and retry.",
-        ));
-    }
-    session
-        .repository
-        .save()
-        .await
-        .map_err(ApiError::internal)?;
-    session.persisted_snapshot = session
-        .repository
-        .dump()
-        .await
-        .map_err(ApiError::internal)?;
-    Ok(Json(SimpleStatus::new("saved")))
-}
-
-async fn cancel_session(
-    State(state): State<AppState>,
-    AxumPath(session_id): AxumPath<String>,
-) -> Result<Json<SimpleStatus>, ApiError> {
-    let session = state.get_session(&session_id).await?;
-    let mut session = session.lock().await;
-    session
-        .repository
-        .cancel()
-        .await
-        .map_err(ApiError::internal)?;
-    Ok(Json(SimpleStatus::new("cancelled")))
-}
-
-async fn export_repository(
-    State(state): State<AppState>,
-    AxumPath(session_id): AxumPath<String>,
-) -> Result<impl IntoResponse, ApiError> {
-    let session = state.get_session(&session_id).await?;
-    let session = session.lock().await;
-    let dump = session
-        .repository
-        .dump()
-        .await
-        .map_err(ApiError::internal)?;
-
-    Ok(([(header::CONTENT_TYPE, "application/octet-stream")], dump))
 }
 
 #[derive(Debug)]
@@ -411,29 +201,6 @@ impl ApiError {
     }
 }
 
-impl IntoResponse for ApiError {
-    fn into_response(self) -> axum::response::Response {
-        (
-            self.status,
-            Json(ErrorResponse {
-                error: self.message,
-            }),
-        )
-            .into_response()
-    }
-}
-
-#[derive(Debug, Serialize)]
-struct SimpleStatus {
-    status: &'static str,
-}
-
-impl SimpleStatus {
-    fn new(status: &'static str) -> Self {
-        Self { status }
-    }
-}
-
 fn load_certs(path: &Path) -> Result<Vec<CertificateDer<'static>>> {
     let data = std::fs::read(path)
         .with_context(|| format!("Failed to read certificate file {}", path.display()))?;
@@ -466,7 +233,11 @@ mod tests {
         KeyPair, SanType,
     };
     use reqwest::{Certificate, Identity};
-    use sec_store::repository::OpenRepository;
+    use sec_store::record::Record;
+    use sec_store::repository::remote::{
+        AddRecordRequest, CreateRepositoryRequest, OpenRepositoryRequest, OpenRepositoryResponse,
+    };
+    use sec_store::repository::{OpenRepository, RecordsRepository};
     use tempfile::TempDir;
 
     use super::*;

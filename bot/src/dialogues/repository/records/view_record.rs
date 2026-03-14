@@ -41,7 +41,7 @@ where
                 vec![
                     vec![(EDIT_RECORD.into(), "✏️".into())],
                     vec![(REMOVE_RECORD.into(), "❌".into())],
-                    vec![(CLOSE_VIEW.into(), "⬅️ Закрыть".into())],
+                    vec![(CLOSE_VIEW.into(), "⬅️ Close".into())],
                 ],
             ),
             None => CtxResult::NewCtx(Box::new(ViewRepoDialog::new(self.repo.clone()))),

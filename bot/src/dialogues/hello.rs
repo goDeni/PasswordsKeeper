@@ -51,17 +51,17 @@ where
     fn get_hello_buttons(&self) -> CtxResult {
         match self.factory.user_has_repository(&self.user_id.0) {
             false => CtxResult::Buttons(
-                "Выберите действие".into(),
+                "Choose an action".into(),
                 vec![vec![(
                     ButtonPayload(CREATE_REPO.to_string()),
-                    "Создать репозиторий".to_string(),
+                    "Create repository".to_string(),
                 )]],
             ),
             true => CtxResult::Buttons(
-                "Репозиторий".into(),
+                "Repository".into(),
                 vec![vec![(
                     ButtonPayload(OPEN_REPO.to_string()),
-                    "Открыть репозиторий".to_string(),
+                    "Open repository".to_string(),
                 )]],
             ),
         }
@@ -94,10 +94,10 @@ where
             }
             (_, Some(CANCEL_RESTORE)) => self.get_hello_buttons(),
             (_, Some(RESTORE_REPO)) => CtxResult::Buttons(
-                "Вы уверены?".into(),
+                "Are you sure?".into(),
                 vec![
-                    vec![(ButtonPayload(CONFIRM_RESTORE.into()), "✅ Да".to_string())],
-                    vec![(ButtonPayload(CANCEL_RESTORE.into()), "❌ Нет".to_string())],
+                    vec![(ButtonPayload(CONFIRM_RESTORE.into()), "✅ Yes".to_string())],
+                    vec![(ButtonPayload(CANCEL_RESTORE.into()), "❌ No".to_string())],
                 ],
             ),
             (_, Some(CONFIRM_RESTORE)) => CtxResult::NewCtx(Box::new(RestoreDialogue::new(
@@ -130,15 +130,12 @@ where
             Some(RESTORE_COMMAND) => {
                 vec![
                     CtxResult::Buttons(
-                        "Если у вас уже есть сохранённые пароли, они будут удалены".into(),
+                        "If you already have saved passwords, they will be deleted".into(),
                         vec![
-                            vec![(
-                                ButtonPayload(RESTORE_REPO.to_string()),
-                                "💾 Восстановить".into(),
-                            )],
+                            vec![(ButtonPayload(RESTORE_REPO.to_string()), "💾 Restore".into())],
                             vec![(
                                 ButtonPayload(CANCEL_RESTORE.to_string()),
-                                "❌ Отменить".into(),
+                                "❌ Cancel".into(),
                             )],
                         ],
                     ),

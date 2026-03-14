@@ -62,11 +62,11 @@ where
         let records_count = records_buttons.len();
         let mut buttons = records_buttons;
         buttons.extend(vec![
-            vec![(ADD_RECORD.into(), "Добавить запись 🗒".into())],
-            vec![(CLOSE_REPO.into(), "Закрыть репозиторий 🚪".into())],
+            vec![(ADD_RECORD.into(), "Add record 🗒".into())],
+            vec![(CLOSE_REPO.into(), "Close repository 🚪".into())],
         ]);
         Ok(vec![CtxResult::Buttons(
-            format!("Количество записей: {}", records_count).into(),
+            format!("Number of records: {}", records_count).into(),
             buttons,
         )])
     }

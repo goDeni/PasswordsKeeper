@@ -44,7 +44,7 @@ where
 {
     async fn init(&mut self) -> Result<Vec<CtxResult>> {
         self.creation_state = CreationState::WaitForPassword;
-        Ok(vec![CtxResult::Messages(vec!["Придумайте пароль".into()])])
+        Ok(vec![CtxResult::Messages(vec!["Choose a password".into()])])
     }
 
     async fn shutdown(&mut self) -> Result<Vec<CtxResult>> {
@@ -69,20 +69,20 @@ where
                 if input.is_empty() {
                     return Ok(vec![
                         CtxResult::RemoveMessages(vec![message.id]),
-                        CtxResult::Messages(vec!["Вы ничего не ввели!".into()]),
+                        CtxResult::Messages(vec!["You didn't enter anything!".into()]),
                     ]);
                 }
                 self.creation_state = CreationState::WaitPasswordRepeat(input.to_string());
                 Ok(vec![
                     CtxResult::RemoveMessages(vec![message.id]),
-                    CtxResult::Messages(vec!["Повторите пароль".into()]),
+                    CtxResult::Messages(vec!["Repeat the password".into()]),
                 ])
             }
             (user_id, Some(input), CreationState::WaitPasswordRepeat(passwd)) => {
                 if passwd.ne(&input) {
                     return Ok(vec![
                         CtxResult::RemoveMessages(vec![message.id]),
-                        CtxResult::Messages(vec!["Неверный пароль. Попробуйте еще раз".into()]),
+                        CtxResult::Messages(vec!["Passwords don't match. Try again".into()]),
                     ]);
                 }
                 self.creation_state = CreationState::Disabled;

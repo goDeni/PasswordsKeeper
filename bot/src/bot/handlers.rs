@@ -79,7 +79,7 @@ async fn non_allowed_updates_handler(bot: Bot, update: Update) -> HandlerResult 
         bot.send_message(
             chat_id,
             format!(
-                "Вам не разрешено пользоваться этим ботом. Ваш идентификатор \"{}\"",
+                "You are not allowed to use this bot. Your identifier is \"{}\"",
                 chat_id
             ),
         )

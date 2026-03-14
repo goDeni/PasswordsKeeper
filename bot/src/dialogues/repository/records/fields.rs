@@ -17,19 +17,16 @@ pub fn record_as_message(record: &Record) -> OutgoingMessage {
             .map(|(name, value)| (name.clone(), value.clone())),
     );
 
-    let mut lines: Vec<String> = vec![format!(
-        "Название: <code>{}</code>",
-        fields[RECORD_NAME_FIELD]
-    )];
+    let mut lines: Vec<String> = vec![format!("Name: <code>{}</code>", fields[RECORD_NAME_FIELD])];
     if let Some(login) = fields.get(RECORD_LOGIN_FIELD) {
-        lines.push(format!("Логин: <code>{}</code>", login));
+        lines.push(format!("Login: <code>{}</code>", login));
     }
     if let Some(descr) = fields.get(RECORD_DESCR_FIELD) {
-        lines.push(format!("Описание: <code>{}</code>", descr));
+        lines.push(format!("Description: <code>{}</code>", descr));
     }
 
     lines.push(format!(
-        "Пароль: <code>{}</code>",
+        "Password: <code>{}</code>",
         fields[RECORD_PASSWD_FIELD]
     ));
 

@@ -77,7 +77,7 @@ pub fn open_repo(password: String) -> Result<RecordsFileRepository> {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_helpers::ScopedTuiDataDir;
+    use crate::test_helpers::{test_password, ScopedTuiDataDir};
 
     use super::{create_repo, ensure_data_dir, has_repo, open_repo, resolve_data_dir};
 
@@ -113,7 +113,7 @@ mod tests {
     #[test]
     fn test_create_repo_creates_file() {
         let scope = ScopedTuiDataDir::new();
-        create_repo("password".to_string()).expect("repo should be created");
+        create_repo(test_password()).expect("repo should be created");
 
         let repo_file = scope.temp_dir.path().join("repo");
         assert!(repo_file.exists());
@@ -122,21 +122,22 @@ mod tests {
     #[test]
     fn test_has_repo_true_after_creation() {
         let _scope = ScopedTuiDataDir::new();
-        create_repo("password".to_string()).expect("repo should be created");
+        create_repo(test_password()).expect("repo should be created");
         assert!(has_repo());
     }
 
     #[test]
     fn test_open_repo_success() {
         let _scope = ScopedTuiDataDir::new();
-        create_repo("password".to_string()).expect("repo should be created");
-        open_repo("password".to_string()).expect("repo should open");
+        let password = test_password();
+        create_repo(password.clone()).expect("repo should be created");
+        open_repo(password).expect("repo should open");
     }
 
     #[test]
     fn test_open_repo_wrong_password_error() {
         let _scope = ScopedTuiDataDir::new();
-        create_repo("password".to_string()).expect("repo should be created");
+        create_repo(test_password()).expect("repo should be created");
         let err = open_repo("wrong".to_string()).expect_err("open should fail");
         assert!(err.to_string().contains("Wrong password"));
     }
@@ -144,7 +145,7 @@ mod tests {
     #[test]
     fn test_open_repo_missing_repo_error() {
         let _scope = ScopedTuiDataDir::new();
-        let err = open_repo("password".to_string()).expect_err("open should fail");
+        let err = open_repo(test_password()).expect_err("open should fail");
         assert!(err
             .to_string()
             .contains("Repository does not exist. Create one first."));

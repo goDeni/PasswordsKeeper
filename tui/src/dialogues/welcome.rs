@@ -123,7 +123,7 @@ mod tests {
 
     use crate::dialogues::{Dialogue, DialogueResult};
     use crate::repo;
-    use crate::test_helpers::ScopedTuiDataDir;
+    use crate::test_helpers::{test_password, ScopedTuiDataDir};
 
     use super::WelcomeDialogue;
 
@@ -178,7 +178,7 @@ mod tests {
     #[test]
     fn test_enter_open_with_repo_starts_password_input() {
         let _scope = ScopedTuiDataDir::new();
-        repo::create_repo("password".to_string()).expect("repo creation failed");
+        repo::create_repo(test_password()).expect("repo creation failed");
         let mut dialogue = WelcomeDialogue::new(Some(1));
 
         let res = dialogue.handle_key(key(KeyCode::Enter));

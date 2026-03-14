@@ -224,7 +224,7 @@ fn install_crypto_provider() {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod test_support {
     use std::net::TcpListener;
     use std::time::Duration;
 
@@ -233,256 +233,21 @@ mod tests {
         KeyPair, SanType,
     };
     use reqwest::{Certificate, Identity};
-    use sec_store::record::Record;
     use sec_store::repository::remote::{
-        AddRecordRequest, CreateRepositoryRequest, OpenRepositoryRequest, OpenRepositoryResponse,
+        CreateRepositoryRequest, OpenRepositoryRequest, OpenRepositoryResponse,
     };
-    use sec_store::repository::{OpenRepository, RecordsRepository};
     use tempfile::TempDir;
 
     use super::*;
 
-    struct TestServer {
-        base_url: String,
+    pub(crate) struct TestServer {
+        pub(crate) base_url: String,
         client_identity_path: PathBuf,
         ca_cert_path: PathBuf,
         _tmp: TempDir,
     }
 
-    #[tokio::test]
-    async fn mtls_server_rejects_unknown_client_and_persists_records() {
-        let server = spawn_test_server().await.expect("server");
-        let allowed_client = build_client(&server, true).await.expect("allowed client");
-
-        let create_response = allowed_client
-            .post(format!("{}/repositories/demo", server.base_url))
-            .json(&CreateRepositoryRequest {
-                password: "secret".to_string(),
-            })
-            .send()
-            .await
-            .expect("create response");
-        assert_eq!(create_response.status(), StatusCode::CREATED);
-
-        let session = allowed_client
-            .post(format!("{}/repositories/demo/sessions", server.base_url))
-            .json(&OpenRepositoryRequest {
-                password: "secret".to_string(),
-            })
-            .send()
-            .await
-            .expect("open response")
-            .json::<OpenRepositoryResponse>()
-            .await
-            .expect("open json");
-
-        let record = Record::new(vec![("name".to_string(), "mail".to_string())]);
-        let add_response = allowed_client
-            .post(format!(
-                "{}/sessions/{}/records",
-                server.base_url, session.session_id
-            ))
-            .json(&AddRecordRequest {
-                record: record.clone(),
-            })
-            .send()
-            .await
-            .expect("add response");
-        assert_eq!(add_response.status(), StatusCode::CREATED);
-
-        let save_response = allowed_client
-            .post(format!(
-                "{}/sessions/{}/save",
-                server.base_url, session.session_id
-            ))
-            .send()
-            .await
-            .expect("save response");
-        assert_eq!(save_response.status(), StatusCode::OK);
-
-        let second_session = allowed_client
-            .post(format!("{}/repositories/demo/sessions", server.base_url))
-            .json(&OpenRepositoryRequest {
-                password: "secret".to_string(),
-            })
-            .send()
-            .await
-            .expect("second open response")
-            .json::<OpenRepositoryResponse>()
-            .await
-            .expect("second open json");
-
-        let records = allowed_client
-            .get(format!(
-                "{}/sessions/{}/records",
-                server.base_url, second_session.session_id
-            ))
-            .send()
-            .await
-            .expect("records response")
-            .json::<Vec<Record>>()
-            .await
-            .expect("records json");
-        assert_eq!(records, vec![record]);
-
-        let denied_client = build_client(&server, false).await.expect("denied client");
-        let denied_result = denied_client
-            .get(format!(
-                "{}/sessions/{}/records",
-                server.base_url, second_session.session_id
-            ))
-            .send()
-            .await;
-        assert!(denied_result.is_err());
-    }
-
-    #[tokio::test]
-    async fn export_uses_unsaved_session_state() {
-        let server = spawn_test_server().await.expect("server");
-        let client = build_client(&server, true).await.expect("client");
-
-        create_repo(&client, &server, "demo", "secret").await;
-        let session = open_session(&client, &server, "demo", "secret").await;
-
-        let record = Record::new(vec![("name".to_string(), "draft".to_string())]);
-        let add_response = client
-            .post(format!(
-                "{}/sessions/{}/records",
-                server.base_url, session.session_id
-            ))
-            .json(&AddRecordRequest {
-                record: record.clone(),
-            })
-            .send()
-            .await
-            .expect("add response");
-        assert_eq!(add_response.status(), StatusCode::CREATED);
-
-        let export_response = client
-            .get(format!(
-                "{}/sessions/{}/export",
-                server.base_url, session.session_id
-            ))
-            .send()
-            .await
-            .expect("export response");
-        assert_eq!(export_response.status(), StatusCode::OK);
-        let dump = export_response.bytes().await.expect("dump bytes");
-
-        let temp_dir = TempDir::new().expect("temp dir");
-        let dump_path = temp_dir.path().join("repo.json");
-        std::fs::write(&dump_path, dump).expect("write dump");
-        let dumped_repo = sec_store::repository::file::OpenRecordsFileRepository(dump_path)
-            .open("secret".to_string())
-            .await
-            .expect("open dumped repo");
-        let records = dumped_repo.get_records().await.expect("records");
-        assert_eq!(records, vec![record]);
-    }
-
-    #[tokio::test]
-    async fn concurrent_save_returns_conflict_instead_of_overwriting() {
-        let server = spawn_test_server().await.expect("server");
-        let client = build_client(&server, true).await.expect("client");
-
-        create_repo(&client, &server, "demo", "secret").await;
-        let first = open_session(&client, &server, "demo", "secret").await;
-        let second = open_session(&client, &server, "demo", "secret").await;
-
-        let first_record = Record::new(vec![("name".to_string(), "first".to_string())]);
-        let second_record = Record::new(vec![("name".to_string(), "second".to_string())]);
-
-        let first_add = client
-            .post(format!(
-                "{}/sessions/{}/records",
-                server.base_url, first.session_id
-            ))
-            .json(&AddRecordRequest {
-                record: first_record.clone(),
-            })
-            .send()
-            .await
-            .expect("first add");
-        assert_eq!(first_add.status(), StatusCode::CREATED);
-
-        let second_add = client
-            .post(format!(
-                "{}/sessions/{}/records",
-                server.base_url, second.session_id
-            ))
-            .json(&AddRecordRequest {
-                record: second_record,
-            })
-            .send()
-            .await
-            .expect("second add");
-        assert_eq!(second_add.status(), StatusCode::CREATED);
-
-        let first_save = client
-            .post(format!(
-                "{}/sessions/{}/save",
-                server.base_url, first.session_id
-            ))
-            .send()
-            .await
-            .expect("first save");
-        assert_eq!(first_save.status(), StatusCode::OK);
-
-        let second_save = client
-            .post(format!(
-                "{}/sessions/{}/save",
-                server.base_url, second.session_id
-            ))
-            .send()
-            .await
-            .expect("second save");
-        assert_eq!(second_save.status(), StatusCode::CONFLICT);
-
-        let verify = open_session(&client, &server, "demo", "secret").await;
-        let records = client
-            .get(format!(
-                "{}/sessions/{}/records",
-                server.base_url, verify.session_id
-            ))
-            .send()
-            .await
-            .expect("records response")
-            .json::<Vec<Record>>()
-            .await
-            .expect("records json");
-        assert_eq!(records, vec![first_record]);
-    }
-
-    #[tokio::test]
-    async fn invalid_repository_names_return_bad_request() {
-        let server = spawn_test_server().await.expect("server");
-        let client = build_client(&server, true).await.expect("client");
-
-        let create_response = client
-            .post(format!("{}/repositories/invalid%3Aname", server.base_url))
-            .json(&CreateRepositoryRequest {
-                password: "secret".to_string(),
-            })
-            .send()
-            .await
-            .expect("create response");
-        assert_eq!(create_response.status(), StatusCode::BAD_REQUEST);
-
-        let open_response = client
-            .post(format!(
-                "{}/repositories/invalid%3Aname/sessions",
-                server.base_url
-            ))
-            .json(&OpenRepositoryRequest {
-                password: "secret".to_string(),
-            })
-            .send()
-            .await
-            .expect("open response");
-        assert_eq!(open_response.status(), StatusCode::BAD_REQUEST);
-    }
-
-    async fn create_repo(
+    pub(crate) async fn create_repo(
         client: &reqwest::Client,
         server: &TestServer,
         name: &str,
@@ -499,7 +264,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::CREATED);
     }
 
-    async fn open_session(
+    pub(crate) async fn open_session(
         client: &reqwest::Client,
         server: &TestServer,
         name: &str,
@@ -521,7 +286,7 @@ mod tests {
             .expect("open json")
     }
 
-    async fn spawn_test_server() -> Result<TestServer> {
+    pub(crate) async fn spawn_test_server() -> Result<TestServer> {
         let tmp = TempDir::new().context("temp dir")?;
         let certs = TestCertificates::generate(tmp.path())?;
 
@@ -551,7 +316,10 @@ mod tests {
         })
     }
 
-    async fn build_client(server: &TestServer, trusted: bool) -> Result<reqwest::Client> {
+    pub(crate) async fn build_client(
+        server: &TestServer,
+        trusted: bool,
+    ) -> Result<reqwest::Client> {
         install_crypto_provider();
         let identity_path = if trusted {
             server.client_identity_path.clone()

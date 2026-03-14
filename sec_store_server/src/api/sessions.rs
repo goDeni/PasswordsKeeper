@@ -177,3 +177,132 @@ async fn export_repository(
 
     Ok(([(header::CONTENT_TYPE, "application/octet-stream")], dump))
 }
+
+#[cfg(test)]
+mod tests {
+    use axum::http::StatusCode;
+    use sec_store::record::Record;
+    use sec_store::repository::file::OpenRecordsFileRepository;
+    use sec_store::repository::remote::AddRecordRequest;
+    use sec_store::repository::{OpenRepository, RecordsRepository};
+    use tempfile::TempDir;
+
+    use crate::test_support::{build_client, create_repo, open_session, spawn_test_server};
+
+    #[tokio::test]
+    async fn export_uses_unsaved_session_state() {
+        let server = spawn_test_server().await.expect("server");
+        let client = build_client(&server, true).await.expect("client");
+
+        create_repo(&client, &server, "demo", "secret").await;
+        let session = open_session(&client, &server, "demo", "secret").await;
+
+        let record = Record::new(vec![("name".to_string(), "draft".to_string())]);
+        let add_response = client
+            .post(format!(
+                "{}/sessions/{}/records",
+                server.base_url, session.session_id
+            ))
+            .json(&AddRecordRequest {
+                record: record.clone(),
+            })
+            .send()
+            .await
+            .expect("add response");
+        assert_eq!(add_response.status(), StatusCode::CREATED);
+
+        let export_response = client
+            .get(format!(
+                "{}/sessions/{}/export",
+                server.base_url, session.session_id
+            ))
+            .send()
+            .await
+            .expect("export response");
+        assert_eq!(export_response.status(), StatusCode::OK);
+        let dump = export_response.bytes().await.expect("dump bytes");
+
+        let temp_dir = TempDir::new().expect("temp dir");
+        let dump_path = temp_dir.path().join("repo.json");
+        std::fs::write(&dump_path, dump).expect("write dump");
+        let dumped_repo = OpenRecordsFileRepository(dump_path)
+            .open("secret".to_string())
+            .await
+            .expect("open dumped repo");
+        let records = dumped_repo.get_records().await.expect("records");
+        assert_eq!(records, vec![record]);
+    }
+
+    #[tokio::test]
+    async fn concurrent_save_returns_conflict_instead_of_overwriting() {
+        let server = spawn_test_server().await.expect("server");
+        let client = build_client(&server, true).await.expect("client");
+
+        create_repo(&client, &server, "demo", "secret").await;
+        let first = open_session(&client, &server, "demo", "secret").await;
+        let second = open_session(&client, &server, "demo", "secret").await;
+
+        let first_record = Record::new(vec![("name".to_string(), "first".to_string())]);
+        let second_record = Record::new(vec![("name".to_string(), "second".to_string())]);
+
+        let first_add = client
+            .post(format!(
+                "{}/sessions/{}/records",
+                server.base_url, first.session_id
+            ))
+            .json(&AddRecordRequest {
+                record: first_record.clone(),
+            })
+            .send()
+            .await
+            .expect("first add");
+        assert_eq!(first_add.status(), StatusCode::CREATED);
+
+        let second_add = client
+            .post(format!(
+                "{}/sessions/{}/records",
+                server.base_url, second.session_id
+            ))
+            .json(&AddRecordRequest {
+                record: second_record,
+            })
+            .send()
+            .await
+            .expect("second add");
+        assert_eq!(second_add.status(), StatusCode::CREATED);
+
+        let first_save = client
+            .post(format!(
+                "{}/sessions/{}/save",
+                server.base_url, first.session_id
+            ))
+            .send()
+            .await
+            .expect("first save");
+        assert_eq!(first_save.status(), StatusCode::OK);
+
+        let second_save = client
+            .post(format!(
+                "{}/sessions/{}/save",
+                server.base_url, second.session_id
+            ))
+            .send()
+            .await
+            .expect("second save");
+        assert_eq!(second_save.status(), StatusCode::CONFLICT);
+
+        let verify = open_session(&client, &server, "demo", "secret").await;
+        let records = client
+            .get(format!(
+                "{}/sessions/{}/records",
+                server.base_url, verify.session_id
+            ))
+            .send()
+            .await
+            .expect("records response")
+            .json::<Vec<Record>>()
+            .await
+            .expect("records json");
+        assert_eq!(records, vec![first_record]);
+    }
+}

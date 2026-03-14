@@ -95,11 +95,11 @@ where
             }
             (None, Some(file), Some(msg)) => {
                 result.push(CtxResult::RemoveMessages(vec![input.id.clone()]));
-                match self.factory.load_user_repository(
-                    &self.user_id.clone().into(),
-                    msg.to_string(),
-                    file,
-                ) {
+                match self
+                    .factory
+                    .load_user_repository(&self.user_id.clone().into(), msg.to_string(), file)
+                    .await
+                {
                     Ok(repo) => {
                         self.file = None;
                         result.push(CtxResult::NewCtx(Box::new(ViewRepoDialog::new(repo))));

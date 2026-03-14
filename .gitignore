@@ -6,3 +6,4 @@ target/
 .env
 whitelist
 .codex/
+AGENTS.md

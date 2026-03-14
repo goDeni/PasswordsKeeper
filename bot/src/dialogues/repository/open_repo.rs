@@ -69,6 +69,7 @@ where
                     match self
                         .factory
                         .get_user_repository(&user_id.clone().into(), passwd)
+                        .await
                     {
                         Ok(repo) => Ok(CtxResult::NewCtx(Box::new(ViewRepoDialog::new(repo)))),
                         Err(RepositoryOpenError::WrongPassword) => Ok(CtxResult::Messages(vec![

@@ -10,4 +10,4 @@ mod runtime;
 mod test_helpers;
 
 pub use app::{App, AppConfig};
-pub use repo::{configure_data_dir, resolve_data_dir};
+pub use repo::{configure_repo_path, default_repo_path, resolve_data_dir, resolve_repo_path};

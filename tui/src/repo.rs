@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 use anyhow::{Context, Result};
@@ -8,48 +8,57 @@ use sec_store::repository::{OpenRepository, RecordsRepository, RepositoryOpenErr
 
 use crate::runtime::block_on;
 
-static DATA_DIR_OVERRIDE: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
+static REPO_PATH_OVERRIDE: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
 
-/// Data directory for TUI (e.g. ./passwords_keeper_tui_data or PASSWORDS_KEEPER_TUI_DATA).
-fn configured_data_dir() -> Option<PathBuf> {
-    DATA_DIR_OVERRIDE
+fn configured_repo_path() -> Option<PathBuf> {
+    REPO_PATH_OVERRIDE
         .get_or_init(|| Mutex::new(None))
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .clone()
 }
 
-pub fn resolve_data_dir(cli_data_dir: Option<PathBuf>) -> PathBuf {
-    cli_data_dir
-        .or_else(|| std::env::var_os("PASSWORDS_KEEPER_TUI_DATA").map(PathBuf::from))
-        .unwrap_or_else(|| {
-            std::env::current_dir()
-                .unwrap_or_default()
-                .join("passwords_keeper_tui_data")
-        })
+pub fn default_repo_path() -> PathBuf {
+    std::env::current_dir()
+        .unwrap_or_default()
+        .join("passwords_keeper_tui_data")
+        .join("repo")
 }
 
-pub fn configure_data_dir(data_dir: PathBuf) {
-    *DATA_DIR_OVERRIDE
+pub fn resolve_repo_path(cli_repo_path: PathBuf) -> PathBuf {
+    cli_repo_path
+}
+
+pub fn resolve_data_dir(repo_path: &Path) -> PathBuf {
+    repo_path
+        .parent()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+pub fn configure_repo_path(repo_path: PathBuf) {
+    *REPO_PATH_OVERRIDE
         .get_or_init(|| Mutex::new(None))
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(data_dir);
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(repo_path);
 }
 
 #[cfg(test)]
-pub(crate) fn clear_configured_data_dir() {
-    *DATA_DIR_OVERRIDE
+pub(crate) fn clear_configured_repo_path() {
+    *REPO_PATH_OVERRIDE
         .get_or_init(|| Mutex::new(None))
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
 }
 
 fn data_dir() -> PathBuf {
-    configured_data_dir().unwrap_or_else(|| resolve_data_dir(None))
+    configured_repo_path()
+        .map(|path| resolve_data_dir(&path))
+        .unwrap_or_else(|| resolve_data_dir(&default_repo_path()))
 }
 
 fn repo_path() -> PathBuf {
-    data_dir().join("repo")
+    configured_repo_path().unwrap_or_else(default_repo_path)
 }
 
 pub fn ensure_data_dir() -> Result<PathBuf> {
@@ -92,20 +101,27 @@ pub fn open_repo(password: String) -> Result<RecordsFileRepository> {
 mod tests {
     use crate::test_helpers::{test_password, ScopedTuiDataDir};
 
-    use super::{create_repo, ensure_data_dir, has_repo, open_repo, resolve_data_dir};
+    use super::{
+        clear_configured_repo_path, configure_repo_path, create_repo, default_repo_path,
+        ensure_data_dir, has_repo, open_repo, resolve_data_dir, resolve_repo_path,
+    };
 
     #[test]
-    fn test_resolve_data_dir_prefers_cli_over_env() {
-        let _scope = ScopedTuiDataDir::new();
-        let path = resolve_data_dir(Some("/tmp/cli-path".into()));
-        assert_eq!(path, PathBuf::from("/tmp/cli-path"));
+    fn test_default_repo_path_uses_default_location() {
+        let path = default_repo_path();
+        assert!(path.ends_with("passwords_keeper_tui_data/repo"));
     }
 
     #[test]
-    fn test_resolve_data_dir_uses_env_when_cli_missing() {
-        let scope = ScopedTuiDataDir::new();
-        let path = resolve_data_dir(None);
-        assert_eq!(path, scope.temp_dir.path());
+    fn test_resolve_data_dir_uses_parent_directory() {
+        let path = resolve_data_dir(Path::new("/tmp/custom/repo-file"));
+        assert_eq!(path, PathBuf::from("/tmp/custom"));
+    }
+
+    #[test]
+    fn test_resolve_repo_path_prefers_cli_repo_file() {
+        let path = resolve_repo_path(PathBuf::from("/tmp/custom-repo"));
+        assert_eq!(path, PathBuf::from("/tmp/custom-repo"));
     }
 
     #[test]
@@ -130,6 +146,22 @@ mod tests {
 
         let repo_file = scope.temp_dir.path().join("repo");
         assert!(repo_file.exists());
+    }
+
+    #[test]
+    fn test_create_repo_uses_configured_repo_path() {
+        let _scope = ScopedTuiDataDir::new();
+        let repo_file = std::env::temp_dir().join("passwordskeeper-custom-repo-file");
+        if repo_file.exists() {
+            std::fs::remove_file(&repo_file).expect("remove stale repo file");
+        }
+
+        configure_repo_path(repo_file.clone());
+        create_repo(test_password()).expect("repo should be created");
+        assert!(repo_file.exists());
+
+        std::fs::remove_file(&repo_file).expect("remove repo file");
+        clear_configured_repo_path();
     }
 
     #[test]
@@ -164,5 +196,5 @@ mod tests {
             .contains("Repository does not exist. Create one first."));
     }
 
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 }

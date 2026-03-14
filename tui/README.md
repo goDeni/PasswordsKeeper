@@ -9,21 +9,17 @@ cargo run -p tui
 # or
 just run-tui
 # or
-cargo run -p tui -- --data-dir /path/to/passwords_keeper_tui_data
+cargo run -p tui -- --repo-file /path/to/custom-repo
 ```
 
-## Data directory
+## Repository file
 
-- Default: `./passwords_keeper_tui_data` (relative to current working directory)
-- Override: set `PASSWORDS_KEEPER_TUI_DATA` to a directory path
-- CLI override: pass `--data-dir /path/to/dir`
-- Precedence: `--data-dir` overrides `PASSWORDS_KEEPER_TUI_DATA`
-
-Repository file: `{data_dir}/repo`
+- Default: `./passwords_keeper_tui_data/repo` (relative to current working directory)
+- Override: pass `--repo-file /path/to/repo-file`
 
 ## CLI parameters
 
-- `--data-dir <PATH>`: Use `PATH` as the TUI data directory. This overrides `PASSWORDS_KEEPER_TUI_DATA`.
+- `--repo-file <PATH>`: Use `PATH` as the repository file.
 
 ## Requirements
 

@@ -30,8 +30,9 @@ pub struct App {
 
 impl Default for App {
     fn default() -> Self {
+        let repo_path = crate::repo::default_repo_path();
         Self::new(AppConfig {
-            data_dir: crate::repo::resolve_data_dir(None),
+            data_dir: crate::repo::resolve_data_dir(&repo_path),
         })
     }
 }

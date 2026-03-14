@@ -1,0 +1,664 @@
+use std::collections::HashMap;
+use std::io::{BufReader, Cursor};
+use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use anyhow::{anyhow, Context, Result};
+use axum::{
+    extract::{Path as AxumPath, State},
+    http::{header, StatusCode},
+    response::IntoResponse,
+    routing::{delete, get, post},
+    Json, Router,
+};
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use rustls::server::WebPkiClientVerifier;
+use rustls::{RootCertStore, ServerConfig};
+use sec_store::record::{Record, RecordId};
+use sec_store::repository::file::{NamedFileRepositories, RecordsFileRepository};
+use sec_store::repository::remote::{
+    AddRecordRequest, CreateRepositoryRequest, ErrorResponse, OpenRepositoryRequest,
+    OpenRepositoryResponse, UpdateRecordRequest,
+};
+use sec_store::repository::{
+    CreateRepositoryError, RecordsRepository, RepositoriesSource, RepositoryOpenError,
+    UpdateRecordError,
+};
+use serde::Serialize;
+use tokio::sync::{Mutex, RwLock};
+use tower_http::trace::TraceLayer;
+use uuid::Uuid;
+
+#[derive(Debug, Clone)]
+pub struct ServerConfigPaths {
+    pub bind_addr: SocketAddr,
+    pub data_dir: PathBuf,
+    pub server_cert_pem: PathBuf,
+    pub server_key_pem: PathBuf,
+    pub client_ca_cert_pem: PathBuf,
+}
+
+#[derive(Clone)]
+pub struct AppState {
+    repositories: NamedFileRepositories,
+    sessions: Arc<RwLock<HashMap<String, Arc<Mutex<RecordsFileRepository>>>>>,
+}
+
+impl AppState {
+    pub async fn new(data_dir: PathBuf) -> Result<Self> {
+        tokio::fs::create_dir_all(&data_dir)
+            .await
+            .with_context(|| format!("Failed to create data directory {}", data_dir.display()))?;
+
+        Ok(Self {
+            repositories: NamedFileRepositories::new(data_dir),
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+        })
+    }
+
+    async fn insert_session(&self, repository: RecordsFileRepository) -> String {
+        let session_id = Uuid::new_v4().to_string();
+        self.sessions
+            .write()
+            .await
+            .insert(session_id.clone(), Arc::new(Mutex::new(repository)));
+        session_id
+    }
+
+    async fn get_session(
+        &self,
+        session_id: &str,
+    ) -> std::result::Result<Arc<Mutex<RecordsFileRepository>>, ApiError> {
+        self.sessions
+            .read()
+            .await
+            .get(session_id)
+            .cloned()
+            .ok_or_else(|| ApiError::not_found("Session does not exist"))
+    }
+}
+
+pub fn app(state: AppState) -> Router {
+    Router::new()
+        .route("/repositories/{repository_name}", post(create_repository))
+        .route(
+            "/repositories/{repository_name}/sessions",
+            post(open_repository),
+        )
+        .route("/sessions/{session_id}", delete(close_session))
+        .route(
+            "/sessions/{session_id}/records",
+            get(list_records).post(add_record),
+        )
+        .route(
+            "/sessions/{session_id}/records/{record_id}",
+            get(get_record).put(update_record).delete(delete_record),
+        )
+        .route("/sessions/{session_id}/save", post(save_session))
+        .route("/sessions/{session_id}/cancel", post(cancel_session))
+        .route("/sessions/{session_id}/export", get(export_repository))
+        .layer(TraceLayer::new_for_http())
+        .with_state(state)
+}
+
+pub async fn rustls_config(
+    paths: &ServerConfigPaths,
+) -> Result<axum_server::tls_rustls::RustlsConfig> {
+    install_crypto_provider();
+    let certs = load_certs(&paths.server_cert_pem)?;
+    let key = load_private_key(&paths.server_key_pem)?;
+
+    let mut client_roots = RootCertStore::empty();
+    for cert in load_certs(&paths.client_ca_cert_pem)? {
+        client_roots
+            .add(cert)
+            .map_err(|err| anyhow!("Failed to add client CA certificate: {err}"))?;
+    }
+
+    let verifier = WebPkiClientVerifier::builder(Arc::new(client_roots))
+        .build()
+        .context("Failed to build client certificate verifier")?;
+
+    let server_config = ServerConfig::builder()
+        .with_client_cert_verifier(verifier)
+        .with_single_cert(certs, key)
+        .context("Failed to build rustls server config")?;
+
+    Ok(axum_server::tls_rustls::RustlsConfig::from_config(
+        Arc::new(server_config),
+    ))
+}
+
+pub async fn serve(config: ServerConfigPaths) -> Result<()> {
+    install_crypto_provider();
+    let state = AppState::new(config.data_dir.clone()).await?;
+    let tls_config = rustls_config(&config).await?;
+    axum_server::bind_rustls(config.bind_addr, tls_config)
+        .serve(app(state).into_make_service())
+        .await
+        .context("Server exited with error")
+}
+
+async fn create_repository(
+    State(state): State<AppState>,
+    AxumPath(repository_name): AxumPath<String>,
+    Json(request): Json<CreateRepositoryRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    state
+        .repositories
+        .create_repository(&repository_name, request.password)
+        .await
+        .map_err(ApiError::from_create_error)?;
+
+    Ok((StatusCode::CREATED, Json(SimpleStatus::new("created"))))
+}
+
+async fn open_repository(
+    State(state): State<AppState>,
+    AxumPath(repository_name): AxumPath<String>,
+    Json(request): Json<OpenRepositoryRequest>,
+) -> Result<Json<OpenRepositoryResponse>, ApiError> {
+    let repository = state
+        .repositories
+        .open_repository(&repository_name, request.password)
+        .await
+        .map_err(ApiError::from_open_error)?;
+    let session_id = state.insert_session(repository).await;
+    Ok(Json(OpenRepositoryResponse { session_id }))
+}
+
+async fn close_session(
+    State(state): State<AppState>,
+    AxumPath(session_id): AxumPath<String>,
+) -> impl IntoResponse {
+    let removed = state.sessions.write().await.remove(&session_id);
+    if removed.is_some() {
+        StatusCode::NO_CONTENT
+    } else {
+        StatusCode::NOT_FOUND
+    }
+}
+
+async fn list_records(
+    State(state): State<AppState>,
+    AxumPath(session_id): AxumPath<String>,
+) -> Result<Json<Vec<Record>>, ApiError> {
+    let session = state.get_session(&session_id).await?;
+    let repository = session.lock().await;
+    Ok(Json(
+        repository.get_records().await.map_err(ApiError::internal)?,
+    ))
+}
+
+async fn get_record(
+    State(state): State<AppState>,
+    AxumPath((session_id, record_id)): AxumPath<(String, String)>,
+) -> Result<Json<Record>, ApiError> {
+    let session = state.get_session(&session_id).await?;
+    let repository = session.lock().await;
+    let record = repository
+        .get(&record_id)
+        .await
+        .map_err(ApiError::internal)?
+        .ok_or_else(|| ApiError::not_found("Record does not exist"))?;
+    Ok(Json(record))
+}
+
+async fn add_record(
+    State(state): State<AppState>,
+    AxumPath(session_id): AxumPath<String>,
+    Json(request): Json<AddRecordRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let session = state.get_session(&session_id).await?;
+    let mut repository = session.lock().await;
+    repository
+        .add_record(request.record)
+        .await
+        .map_err(ApiError::from_add_error)?;
+    Ok((StatusCode::CREATED, Json(SimpleStatus::new("created"))))
+}
+
+async fn update_record(
+    State(state): State<AppState>,
+    AxumPath((session_id, record_id)): AxumPath<(String, String)>,
+    Json(request): Json<UpdateRecordRequest>,
+) -> Result<Json<SimpleStatus>, ApiError> {
+    if request.record.id != record_id {
+        return Err(ApiError::bad_request(
+            "Record id in path and payload must match",
+        ));
+    }
+
+    let session = state.get_session(&session_id).await?;
+    let mut repository = session.lock().await;
+    repository
+        .update(request.record)
+        .await
+        .map_err(ApiError::from_update_error)?;
+    Ok(Json(SimpleStatus::new("updated")))
+}
+
+async fn delete_record(
+    State(state): State<AppState>,
+    AxumPath((session_id, record_id)): AxumPath<(String, RecordId)>,
+) -> Result<StatusCode, ApiError> {
+    let session = state.get_session(&session_id).await?;
+    let mut repository = session.lock().await;
+    repository
+        .delete(&record_id)
+        .await
+        .map_err(ApiError::from_update_error)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn save_session(
+    State(state): State<AppState>,
+    AxumPath(session_id): AxumPath<String>,
+) -> Result<Json<SimpleStatus>, ApiError> {
+    let session = state.get_session(&session_id).await?;
+    let mut repository = session.lock().await;
+    repository.save().await.map_err(ApiError::internal)?;
+    Ok(Json(SimpleStatus::new("saved")))
+}
+
+async fn cancel_session(
+    State(state): State<AppState>,
+    AxumPath(session_id): AxumPath<String>,
+) -> Result<Json<SimpleStatus>, ApiError> {
+    let session = state.get_session(&session_id).await?;
+    let mut repository = session.lock().await;
+    repository.cancel().await.map_err(ApiError::internal)?;
+    Ok(Json(SimpleStatus::new("cancelled")))
+}
+
+async fn export_repository(
+    State(state): State<AppState>,
+    AxumPath(session_id): AxumPath<String>,
+) -> Result<impl IntoResponse, ApiError> {
+    let session = state.get_session(&session_id).await?;
+    let repository = session.lock().await;
+    let dump = repository.dump().await.map_err(ApiError::internal)?;
+
+    Ok(([(header::CONTENT_TYPE, "application/octet-stream")], dump))
+}
+
+#[derive(Debug)]
+pub struct ApiError {
+    status: StatusCode,
+    message: String,
+}
+
+impl ApiError {
+    fn bad_request(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::BAD_REQUEST,
+            message: message.into(),
+        }
+    }
+
+    fn not_found(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::NOT_FOUND,
+            message: message.into(),
+        }
+    }
+
+    fn internal(error: impl std::fmt::Display) -> Self {
+        Self {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: error.to_string(),
+        }
+    }
+
+    fn from_create_error(error: CreateRepositoryError) -> Self {
+        match error {
+            CreateRepositoryError::RepositoryAlreadyExists => Self {
+                status: StatusCode::CONFLICT,
+                message: "Repository already exists".into(),
+            },
+            CreateRepositoryError::UnexpectedError(err) => Self::internal(err),
+        }
+    }
+
+    fn from_open_error(error: RepositoryOpenError) -> Self {
+        match error {
+            RepositoryOpenError::WrongPassword => Self {
+                status: StatusCode::UNAUTHORIZED,
+                message: "Wrong password".into(),
+            },
+            RepositoryOpenError::DoesntExist => Self::not_found("Repository does not exist"),
+            RepositoryOpenError::OpenError(err) => Self::internal(err),
+        }
+    }
+
+    fn from_add_error(error: sec_store::repository::AddRecordError) -> Self {
+        match error {
+            sec_store::repository::AddRecordError::RecordDoesntExist => Self {
+                status: StatusCode::CONFLICT,
+                message: "Record already exists".into(),
+            },
+            sec_store::repository::AddRecordError::UnxpectedError(err) => Self::internal(err),
+        }
+    }
+
+    fn from_update_error(error: UpdateRecordError) -> Self {
+        match error {
+            UpdateRecordError::RecordDoesntExist => Self::not_found("Record does not exist"),
+            UpdateRecordError::UnxpectedError(err) => Self::internal(err),
+        }
+    }
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> axum::response::Response {
+        (
+            self.status,
+            Json(ErrorResponse {
+                error: self.message,
+            }),
+        )
+            .into_response()
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct SimpleStatus {
+    status: &'static str,
+}
+
+impl SimpleStatus {
+    fn new(status: &'static str) -> Self {
+        Self { status }
+    }
+}
+
+fn load_certs(path: &Path) -> Result<Vec<CertificateDer<'static>>> {
+    let data = std::fs::read(path)
+        .with_context(|| format!("Failed to read certificate file {}", path.display()))?;
+    let mut reader = BufReader::new(Cursor::new(data));
+    rustls_pemfile::certs(&mut reader)
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .context("Failed to parse PEM certificates")
+}
+
+fn load_private_key(path: &Path) -> Result<PrivateKeyDer<'static>> {
+    let data = std::fs::read(path)
+        .with_context(|| format!("Failed to read key file {}", path.display()))?;
+    let mut reader = BufReader::new(Cursor::new(data));
+    rustls_pemfile::private_key(&mut reader)
+        .context("Failed to parse private key PEM")?
+        .ok_or_else(|| anyhow!("No private key found in {}", path.display()))
+}
+
+fn install_crypto_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::TcpListener;
+    use std::time::Duration;
+
+    use rcgen::{
+        BasicConstraints, CertificateParams, CertifiedIssuer, DistinguishedName, DnType, IsCa,
+        KeyPair, SanType,
+    };
+    use reqwest::{Certificate, Identity};
+    use tempfile::TempDir;
+
+    use super::*;
+
+    struct TestServer {
+        base_url: String,
+        client_identity_path: PathBuf,
+        ca_cert_path: PathBuf,
+        _tmp: TempDir,
+    }
+
+    #[tokio::test]
+    async fn mtls_server_rejects_unknown_client_and_persists_records() {
+        let server = spawn_test_server().await.expect("server");
+        let allowed_client = build_client(&server, true).await.expect("allowed client");
+
+        let create_response = allowed_client
+            .post(format!("{}/repositories/demo", server.base_url))
+            .json(&CreateRepositoryRequest {
+                password: "secret".to_string(),
+            })
+            .send()
+            .await
+            .expect("create response");
+        assert_eq!(create_response.status(), StatusCode::CREATED);
+
+        let session = allowed_client
+            .post(format!("{}/repositories/demo/sessions", server.base_url))
+            .json(&OpenRepositoryRequest {
+                password: "secret".to_string(),
+            })
+            .send()
+            .await
+            .expect("open response")
+            .json::<OpenRepositoryResponse>()
+            .await
+            .expect("open json");
+
+        let record = Record::new(vec![("name".to_string(), "mail".to_string())]);
+        let add_response = allowed_client
+            .post(format!(
+                "{}/sessions/{}/records",
+                server.base_url, session.session_id
+            ))
+            .json(&AddRecordRequest {
+                record: record.clone(),
+            })
+            .send()
+            .await
+            .expect("add response");
+        assert_eq!(add_response.status(), StatusCode::CREATED);
+
+        let save_response = allowed_client
+            .post(format!(
+                "{}/sessions/{}/save",
+                server.base_url, session.session_id
+            ))
+            .send()
+            .await
+            .expect("save response");
+        assert_eq!(save_response.status(), StatusCode::OK);
+
+        let second_session = allowed_client
+            .post(format!("{}/repositories/demo/sessions", server.base_url))
+            .json(&OpenRepositoryRequest {
+                password: "secret".to_string(),
+            })
+            .send()
+            .await
+            .expect("second open response")
+            .json::<OpenRepositoryResponse>()
+            .await
+            .expect("second open json");
+
+        let records = allowed_client
+            .get(format!(
+                "{}/sessions/{}/records",
+                server.base_url, second_session.session_id
+            ))
+            .send()
+            .await
+            .expect("records response")
+            .json::<Vec<Record>>()
+            .await
+            .expect("records json");
+        assert_eq!(records, vec![record]);
+
+        let denied_client = build_client(&server, false).await.expect("denied client");
+        let denied_result = denied_client
+            .get(format!(
+                "{}/sessions/{}/records",
+                server.base_url, second_session.session_id
+            ))
+            .send()
+            .await;
+        assert!(denied_result.is_err());
+    }
+
+    async fn spawn_test_server() -> Result<TestServer> {
+        let tmp = TempDir::new().context("temp dir")?;
+        let certs = TestCertificates::generate(tmp.path())?;
+
+        let listener = TcpListener::bind("127.0.0.1:0").context("bind listener")?;
+        let addr = listener.local_addr().context("local addr")?;
+        drop(listener);
+
+        let config = ServerConfigPaths {
+            bind_addr: addr,
+            data_dir: tmp.path().join("data"),
+            server_cert_pem: certs.server_cert_path.clone(),
+            server_key_pem: certs.server_key_path.clone(),
+            client_ca_cert_pem: certs.ca_cert_path.clone(),
+        };
+
+        tokio::spawn(async move {
+            let _ = serve(config).await;
+        });
+
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        Ok(TestServer {
+            base_url: format!("https://{}", addr),
+            client_identity_path: certs.client_identity_path,
+            ca_cert_path: certs.ca_cert_path,
+            _tmp: tmp,
+        })
+    }
+
+    async fn build_client(server: &TestServer, trusted: bool) -> Result<reqwest::Client> {
+        install_crypto_provider();
+        let identity_path = if trusted {
+            server.client_identity_path.clone()
+        } else {
+            let untrusted = server
+                .client_identity_path
+                .parent()
+                .unwrap()
+                .join("untrusted-client.pem");
+            TestCertificates::write_untrusted_client(&untrusted)?;
+            untrusted
+        };
+
+        let identity = Identity::from_pem(
+            &tokio::fs::read(identity_path)
+                .await
+                .context("read client identity")?,
+        )
+        .context("parse client identity")?;
+        let ca_cert = Certificate::from_pem(
+            &tokio::fs::read(&server.ca_cert_path)
+                .await
+                .context("read ca cert")?,
+        )
+        .context("parse ca cert")?;
+
+        reqwest::Client::builder()
+            .identity(identity)
+            .add_root_certificate(ca_cert)
+            .use_rustls_tls()
+            .https_only(true)
+            .build()
+            .context("build reqwest client")
+    }
+
+    struct TestCertificates {
+        ca_cert_path: PathBuf,
+        server_cert_path: PathBuf,
+        server_key_path: PathBuf,
+        client_identity_path: PathBuf,
+    }
+
+    impl TestCertificates {
+        fn generate(base_dir: &Path) -> Result<Self> {
+            let mut ca_params = CertificateParams::new(Vec::<String>::new())?;
+            ca_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+            ca_params.distinguished_name = DistinguishedName::new();
+            ca_params
+                .distinguished_name
+                .push(DnType::CommonName, "PasswordsKeeper Test CA");
+            let ca_key = KeyPair::generate()?;
+            let ca = CertifiedIssuer::self_signed(ca_params, ca_key)?;
+
+            let server = generate_signed_cert(
+                &ca,
+                "localhost",
+                vec![
+                    SanType::DnsName("localhost".try_into()?),
+                    SanType::IpAddress("127.0.0.1".parse()?),
+                ],
+            )?;
+            let client = generate_signed_cert(&ca, "allowed-client", Vec::new())?;
+
+            let ca_cert_path = base_dir.join("ca.pem");
+            let server_cert_path = base_dir.join("server.pem");
+            let server_key_path = base_dir.join("server-key.pem");
+            let client_identity_path = base_dir.join("client-identity.pem");
+
+            std::fs::write(&ca_cert_path, ca.pem()).context("write ca cert")?;
+            std::fs::write(&server_cert_path, server.cert.pem()).context("write server cert")?;
+            std::fs::write(&server_key_path, server.key_pair.serialize_pem())
+                .context("write server key")?;
+            std::fs::write(
+                &client_identity_path,
+                format!("{}{}", client.cert.pem(), client.key_pair.serialize_pem()),
+            )
+            .context("write client identity")?;
+
+            Ok(Self {
+                ca_cert_path,
+                server_cert_path,
+                server_key_path,
+                client_identity_path,
+            })
+        }
+
+        fn write_untrusted_client(path: &Path) -> Result<()> {
+            let cert = generate_self_signed_cert("untrusted-client")?;
+            std::fs::write(
+                path,
+                format!("{}{}", cert.cert.pem(), cert.key_pair.serialize_pem()),
+            )
+            .with_context(|| format!("write {}", path.display()))
+        }
+    }
+
+    struct GeneratedCert {
+        cert: rcgen::Certificate,
+        key_pair: KeyPair,
+    }
+
+    fn generate_signed_cert(
+        issuer: &CertifiedIssuer<'_, KeyPair>,
+        common_name: &str,
+        subject_alt_names: Vec<SanType>,
+    ) -> Result<GeneratedCert> {
+        let mut params = CertificateParams::new(Vec::<String>::new())?;
+        params.subject_alt_names = subject_alt_names;
+        params.distinguished_name = DistinguishedName::new();
+        params
+            .distinguished_name
+            .push(DnType::CommonName, common_name);
+        let key_pair = KeyPair::generate()?;
+        let cert = params.signed_by(&key_pair, issuer)?;
+        Ok(GeneratedCert { cert, key_pair })
+    }
+
+    fn generate_self_signed_cert(common_name: &str) -> Result<GeneratedCert> {
+        let mut params = CertificateParams::new(Vec::<String>::new())?;
+        params.distinguished_name = DistinguishedName::new();
+        params
+            .distinguished_name
+            .push(DnType::CommonName, common_name);
+        let key_pair = KeyPair::generate()?;
+        let cert = params.self_signed(&key_pair)?;
+        Ok(GeneratedCert { cert, key_pair })
+    }
+}

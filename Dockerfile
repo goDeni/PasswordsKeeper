@@ -8,6 +8,7 @@ COPY ./Cargo.toml ./Cargo.toml
 COPY ./sec_store ./sec_store
 COPY ./bot ./bot
 COPY ./stated_dialogues ./stated_dialogues
+COPY ./tui ./tui
 
 RUN cargo build --bin bot --verbose --release
 

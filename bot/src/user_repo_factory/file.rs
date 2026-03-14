@@ -62,6 +62,12 @@ impl RepositoriesFactory<RecordsFileRepository> for FileRepositoriesFactory {
                 RepositoryOpenError::DoesntExist => RepositoryLoadError::UnexpectedError(anyhow!(
                     "Repository already doesn't exists?"
                 )),
+                RepositoryOpenError::InvalidRepositoryName(name) => {
+                    RepositoryLoadError::UnexpectedError(anyhow!(
+                        "Invalid repository name for user repository: {}",
+                        name
+                    ))
+                }
                 RepositoryOpenError::WrongPassword => RepositoryLoadError::WrongPassword,
             }),
         }

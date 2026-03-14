@@ -42,7 +42,13 @@ pub struct ServerConfigPaths {
 #[derive(Clone)]
 pub struct AppState {
     repositories: NamedFileRepositories,
-    sessions: Arc<RwLock<HashMap<String, Arc<Mutex<RecordsFileRepository>>>>>,
+    sessions: Arc<RwLock<HashMap<String, Arc<Mutex<SessionState>>>>>,
+}
+
+#[derive(Debug)]
+struct SessionState {
+    repository: RecordsFileRepository,
+    persisted_snapshot: Vec<u8>,
 }
 
 impl AppState {
@@ -57,19 +63,23 @@ impl AppState {
         })
     }
 
-    async fn insert_session(&self, repository: RecordsFileRepository) -> String {
+    async fn insert_session(&self, repository: RecordsFileRepository) -> Result<String> {
         let session_id = Uuid::new_v4().to_string();
-        self.sessions
-            .write()
-            .await
-            .insert(session_id.clone(), Arc::new(Mutex::new(repository)));
-        session_id
+        let persisted_snapshot = repository.persisted_dump().await?;
+        self.sessions.write().await.insert(
+            session_id.clone(),
+            Arc::new(Mutex::new(SessionState {
+                repository,
+                persisted_snapshot,
+            })),
+        );
+        Ok(session_id)
     }
 
     async fn get_session(
         &self,
         session_id: &str,
-    ) -> std::result::Result<Arc<Mutex<RecordsFileRepository>>, ApiError> {
+    ) -> std::result::Result<Arc<Mutex<SessionState>>, ApiError> {
         self.sessions
             .read()
             .await
@@ -164,7 +174,10 @@ async fn open_repository(
         .open_repository(&repository_name, request.password)
         .await
         .map_err(ApiError::from_open_error)?;
-    let session_id = state.insert_session(repository).await;
+    let session_id = state
+        .insert_session(repository)
+        .await
+        .map_err(ApiError::internal)?;
     Ok(Json(OpenRepositoryResponse { session_id }))
 }
 
@@ -185,9 +198,13 @@ async fn list_records(
     AxumPath(session_id): AxumPath<String>,
 ) -> Result<Json<Vec<Record>>, ApiError> {
     let session = state.get_session(&session_id).await?;
-    let repository = session.lock().await;
+    let session = session.lock().await;
     Ok(Json(
-        repository.get_records().await.map_err(ApiError::internal)?,
+        session
+            .repository
+            .get_records()
+            .await
+            .map_err(ApiError::internal)?,
     ))
 }
 
@@ -196,8 +213,9 @@ async fn get_record(
     AxumPath((session_id, record_id)): AxumPath<(String, String)>,
 ) -> Result<Json<Record>, ApiError> {
     let session = state.get_session(&session_id).await?;
-    let repository = session.lock().await;
-    let record = repository
+    let session = session.lock().await;
+    let record = session
+        .repository
         .get(&record_id)
         .await
         .map_err(ApiError::internal)?
@@ -211,8 +229,9 @@ async fn add_record(
     Json(request): Json<AddRecordRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     let session = state.get_session(&session_id).await?;
-    let mut repository = session.lock().await;
-    repository
+    let mut session = session.lock().await;
+    session
+        .repository
         .add_record(request.record)
         .await
         .map_err(ApiError::from_add_error)?;
@@ -231,8 +250,9 @@ async fn update_record(
     }
 
     let session = state.get_session(&session_id).await?;
-    let mut repository = session.lock().await;
-    repository
+    let mut session = session.lock().await;
+    session
+        .repository
         .update(request.record)
         .await
         .map_err(ApiError::from_update_error)?;
@@ -244,8 +264,9 @@ async fn delete_record(
     AxumPath((session_id, record_id)): AxumPath<(String, RecordId)>,
 ) -> Result<StatusCode, ApiError> {
     let session = state.get_session(&session_id).await?;
-    let mut repository = session.lock().await;
-    repository
+    let mut session = session.lock().await;
+    session
+        .repository
         .delete(&record_id)
         .await
         .map_err(ApiError::from_update_error)?;
@@ -257,8 +278,27 @@ async fn save_session(
     AxumPath(session_id): AxumPath<String>,
 ) -> Result<Json<SimpleStatus>, ApiError> {
     let session = state.get_session(&session_id).await?;
-    let mut repository = session.lock().await;
-    repository.save().await.map_err(ApiError::internal)?;
+    let mut session = session.lock().await;
+    let current_persisted = session
+        .repository
+        .persisted_dump()
+        .await
+        .map_err(ApiError::internal)?;
+    if current_persisted != session.persisted_snapshot {
+        return Err(ApiError::conflict(
+            "Repository changed in another session. Reopen and retry.",
+        ));
+    }
+    session
+        .repository
+        .save()
+        .await
+        .map_err(ApiError::internal)?;
+    session.persisted_snapshot = session
+        .repository
+        .dump()
+        .await
+        .map_err(ApiError::internal)?;
     Ok(Json(SimpleStatus::new("saved")))
 }
 
@@ -267,8 +307,12 @@ async fn cancel_session(
     AxumPath(session_id): AxumPath<String>,
 ) -> Result<Json<SimpleStatus>, ApiError> {
     let session = state.get_session(&session_id).await?;
-    let mut repository = session.lock().await;
-    repository.cancel().await.map_err(ApiError::internal)?;
+    let mut session = session.lock().await;
+    session
+        .repository
+        .cancel()
+        .await
+        .map_err(ApiError::internal)?;
     Ok(Json(SimpleStatus::new("cancelled")))
 }
 
@@ -277,8 +321,12 @@ async fn export_repository(
     AxumPath(session_id): AxumPath<String>,
 ) -> Result<impl IntoResponse, ApiError> {
     let session = state.get_session(&session_id).await?;
-    let repository = session.lock().await;
-    let dump = repository.dump().await.map_err(ApiError::internal)?;
+    let session = session.lock().await;
+    let dump = session
+        .repository
+        .dump()
+        .await
+        .map_err(ApiError::internal)?;
 
     Ok(([(header::CONTENT_TYPE, "application/octet-stream")], dump))
 }
@@ -304,6 +352,13 @@ impl ApiError {
         }
     }
 
+    fn conflict(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::CONFLICT,
+            message: message.into(),
+        }
+    }
+
     fn internal(error: impl std::fmt::Display) -> Self {
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
@@ -317,6 +372,9 @@ impl ApiError {
                 status: StatusCode::CONFLICT,
                 message: "Repository already exists".into(),
             },
+            CreateRepositoryError::InvalidRepositoryName(name) => {
+                Self::bad_request(format!("Invalid repository name: {name}"))
+            }
             CreateRepositoryError::UnexpectedError(err) => Self::internal(err),
         }
     }
@@ -328,6 +386,9 @@ impl ApiError {
                 message: "Wrong password".into(),
             },
             RepositoryOpenError::DoesntExist => Self::not_found("Repository does not exist"),
+            RepositoryOpenError::InvalidRepositoryName(name) => {
+                Self::bad_request(format!("Invalid repository name: {name}"))
+            }
             RepositoryOpenError::OpenError(err) => Self::internal(err),
         }
     }
@@ -405,6 +466,7 @@ mod tests {
         KeyPair, SanType,
     };
     use reqwest::{Certificate, Identity};
+    use sec_store::repository::OpenRepository;
     use tempfile::TempDir;
 
     use super::*;
@@ -501,6 +563,191 @@ mod tests {
             .send()
             .await;
         assert!(denied_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn export_uses_unsaved_session_state() {
+        let server = spawn_test_server().await.expect("server");
+        let client = build_client(&server, true).await.expect("client");
+
+        create_repo(&client, &server, "demo", "secret").await;
+        let session = open_session(&client, &server, "demo", "secret").await;
+
+        let record = Record::new(vec![("name".to_string(), "draft".to_string())]);
+        let add_response = client
+            .post(format!(
+                "{}/sessions/{}/records",
+                server.base_url, session.session_id
+            ))
+            .json(&AddRecordRequest {
+                record: record.clone(),
+            })
+            .send()
+            .await
+            .expect("add response");
+        assert_eq!(add_response.status(), StatusCode::CREATED);
+
+        let export_response = client
+            .get(format!(
+                "{}/sessions/{}/export",
+                server.base_url, session.session_id
+            ))
+            .send()
+            .await
+            .expect("export response");
+        assert_eq!(export_response.status(), StatusCode::OK);
+        let dump = export_response.bytes().await.expect("dump bytes");
+
+        let temp_dir = TempDir::new().expect("temp dir");
+        let dump_path = temp_dir.path().join("repo.json");
+        std::fs::write(&dump_path, dump).expect("write dump");
+        let dumped_repo = sec_store::repository::file::OpenRecordsFileRepository(dump_path)
+            .open("secret".to_string())
+            .await
+            .expect("open dumped repo");
+        let records = dumped_repo.get_records().await.expect("records");
+        assert_eq!(records, vec![record]);
+    }
+
+    #[tokio::test]
+    async fn concurrent_save_returns_conflict_instead_of_overwriting() {
+        let server = spawn_test_server().await.expect("server");
+        let client = build_client(&server, true).await.expect("client");
+
+        create_repo(&client, &server, "demo", "secret").await;
+        let first = open_session(&client, &server, "demo", "secret").await;
+        let second = open_session(&client, &server, "demo", "secret").await;
+
+        let first_record = Record::new(vec![("name".to_string(), "first".to_string())]);
+        let second_record = Record::new(vec![("name".to_string(), "second".to_string())]);
+
+        let first_add = client
+            .post(format!(
+                "{}/sessions/{}/records",
+                server.base_url, first.session_id
+            ))
+            .json(&AddRecordRequest {
+                record: first_record.clone(),
+            })
+            .send()
+            .await
+            .expect("first add");
+        assert_eq!(first_add.status(), StatusCode::CREATED);
+
+        let second_add = client
+            .post(format!(
+                "{}/sessions/{}/records",
+                server.base_url, second.session_id
+            ))
+            .json(&AddRecordRequest {
+                record: second_record,
+            })
+            .send()
+            .await
+            .expect("second add");
+        assert_eq!(second_add.status(), StatusCode::CREATED);
+
+        let first_save = client
+            .post(format!(
+                "{}/sessions/{}/save",
+                server.base_url, first.session_id
+            ))
+            .send()
+            .await
+            .expect("first save");
+        assert_eq!(first_save.status(), StatusCode::OK);
+
+        let second_save = client
+            .post(format!(
+                "{}/sessions/{}/save",
+                server.base_url, second.session_id
+            ))
+            .send()
+            .await
+            .expect("second save");
+        assert_eq!(second_save.status(), StatusCode::CONFLICT);
+
+        let verify = open_session(&client, &server, "demo", "secret").await;
+        let records = client
+            .get(format!(
+                "{}/sessions/{}/records",
+                server.base_url, verify.session_id
+            ))
+            .send()
+            .await
+            .expect("records response")
+            .json::<Vec<Record>>()
+            .await
+            .expect("records json");
+        assert_eq!(records, vec![first_record]);
+    }
+
+    #[tokio::test]
+    async fn invalid_repository_names_return_bad_request() {
+        let server = spawn_test_server().await.expect("server");
+        let client = build_client(&server, true).await.expect("client");
+
+        let create_response = client
+            .post(format!("{}/repositories/invalid%3Aname", server.base_url))
+            .json(&CreateRepositoryRequest {
+                password: "secret".to_string(),
+            })
+            .send()
+            .await
+            .expect("create response");
+        assert_eq!(create_response.status(), StatusCode::BAD_REQUEST);
+
+        let open_response = client
+            .post(format!(
+                "{}/repositories/invalid%3Aname/sessions",
+                server.base_url
+            ))
+            .json(&OpenRepositoryRequest {
+                password: "secret".to_string(),
+            })
+            .send()
+            .await
+            .expect("open response");
+        assert_eq!(open_response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    async fn create_repo(
+        client: &reqwest::Client,
+        server: &TestServer,
+        name: &str,
+        password: &str,
+    ) {
+        let response = client
+            .post(format!("{}/repositories/{}", server.base_url, name))
+            .json(&CreateRepositoryRequest {
+                password: password.to_string(),
+            })
+            .send()
+            .await
+            .expect("create response");
+        assert_eq!(response.status(), StatusCode::CREATED);
+    }
+
+    async fn open_session(
+        client: &reqwest::Client,
+        server: &TestServer,
+        name: &str,
+        password: &str,
+    ) -> OpenRepositoryResponse {
+        client
+            .post(format!(
+                "{}/repositories/{}/sessions",
+                server.base_url, name
+            ))
+            .json(&OpenRepositoryRequest {
+                password: password.to_string(),
+            })
+            .send()
+            .await
+            .expect("open response")
+            .json::<OpenRepositoryResponse>()
+            .await
+            .expect("open json")
     }
 
     async fn spawn_test_server() -> Result<TestServer> {

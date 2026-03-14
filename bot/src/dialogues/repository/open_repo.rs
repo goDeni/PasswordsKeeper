@@ -76,6 +76,11 @@ where
                             "Wrong password 🤨. Try again".into(),
                         ])),
                         Err(RepositoryOpenError::DoesntExist) => Ok(CtxResult::CloseCtx),
+                        Err(RepositoryOpenError::InvalidRepositoryName(_)) => {
+                            Ok(CtxResult::Messages(vec![
+                                "Repository configuration is invalid".into(),
+                            ]))
+                        }
                         Err(error) => Err(error),
                     }
                 }

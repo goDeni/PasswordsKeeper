@@ -27,6 +27,7 @@ impl ScopedTuiDataDir {
     fn new_with_lock(env_lock: MutexGuard<'static, ()>) -> Self {
         let previous_env = std::env::var_os("PASSWORDS_KEEPER_TUI_DATA");
         let temp_dir = TempDir::new().expect("failed to create test temp dir");
+        crate::repo::clear_configured_data_dir();
 
         // SAFETY: tests serialize env mutations via TUI_DATA_ENV_LOCK.
         unsafe {
@@ -43,6 +44,7 @@ impl ScopedTuiDataDir {
 
 impl Drop for ScopedTuiDataDir {
     fn drop(&mut self) {
+        crate::repo::clear_configured_data_dir();
         if let Some(value) = self.previous_env.as_ref() {
             // SAFETY: tests serialize env mutations via TUI_DATA_ENV_LOCK.
             unsafe {

@@ -36,6 +36,14 @@ pub fn configure_data_dir(data_dir: PathBuf) {
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(data_dir);
 }
 
+#[cfg(test)]
+pub(crate) fn clear_configured_data_dir() {
+    *DATA_DIR_OVERRIDE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+}
+
 fn data_dir() -> PathBuf {
     configured_data_dir().unwrap_or_else(|| resolve_data_dir(None))
 }
@@ -72,6 +80,9 @@ pub fn open_repo(password: String) -> Result<RecordsFileRepository> {
         }
         Err(RepositoryOpenError::DoesntExist) => {
             anyhow::bail!("Repository does not exist. Create one first.")
+        }
+        Err(RepositoryOpenError::InvalidRepositoryName(name)) => {
+            anyhow::bail!("Invalid repository name: {}", name)
         }
         Err(RepositoryOpenError::OpenError(e)) => Err(e),
     }

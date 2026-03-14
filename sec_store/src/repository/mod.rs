@@ -30,6 +30,8 @@ pub type AddResult<T> = Result<T, AddRecordError>;
 pub enum CreateRepositoryError {
     #[error("Repository already exists")]
     RepositoryAlreadyExists,
+    #[error("Invalid repository name: {0}")]
+    InvalidRepositoryName(String),
     #[error("Unexpected error: {0}")]
     UnexpectedError(Error),
 }
@@ -39,6 +41,7 @@ pub type CreateRepositoryResult<T> = Result<T, CreateRepositoryError>;
 pub enum RepositoryOpenError {
     WrongPassword,
     DoesntExist,
+    InvalidRepositoryName(String),
     OpenError(anyhow::Error),
 }
 pub type OpenResult<T> = Result<T, RepositoryOpenError>;
@@ -48,6 +51,9 @@ impl Display for RepositoryOpenError {
         match self {
             RepositoryOpenError::WrongPassword => write!(f, "WrongPassword"),
             RepositoryOpenError::DoesntExist => write!(f, "DoesntExist"),
+            RepositoryOpenError::InvalidRepositoryName(name) => {
+                write!(f, "InvalidRepositoryName({name})")
+            }
             RepositoryOpenError::OpenError(err) => {
                 write!(f, "OpenError({}, {})", err, err.root_cause())
             }

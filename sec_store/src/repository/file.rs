@@ -62,6 +62,24 @@ impl RecordsFileRepository {
             saved_records: HashMap::new(),
         }
     }
+
+    pub async fn persisted_dump(&self) -> Result<Vec<u8>> {
+        let mut buff = Vec::new();
+        File::open(&self.file)?.read_to_end(&mut buff)?;
+
+        Ok(buff)
+    }
+
+    fn serialize_records(&self, records: &RecordsMap) -> Result<Vec<u8>> {
+        serde_json::to_vec(&RawRepositoryJson(
+            encrypt_string(&self.passwd, self.identifier.as_str()),
+            records
+                .values()
+                .map(|rec| rec.encrypt(&self.passwd))
+                .collect::<Vec<EncryptedRecord>>(),
+        ))
+        .with_context(|| format!("Failed json dump serialization {:?}", self.file))
+    }
 }
 
 impl NamedFileRepositories {
@@ -75,9 +93,7 @@ impl NamedFileRepositories {
                 .chars()
                 .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
         {
-            return Err(anyhow!(
-                "Invalid repository name. Use only ASCII letters, digits, '-', '_' or '.'"
-            ));
+            return Err(anyhow!(repository_name.to_string()));
         }
 
         Ok(self.base_dir.join(format!("{repository_name}.json")))
@@ -146,17 +162,7 @@ impl RecordsRepository for RecordsFileRepository {
                 .parent()
                 .with_context(|| format!("Failed get parent directory for {:?}", self.file))?,
         )?;
-        serde_json::to_writer(
-            &tmp_file,
-            &RawRepositoryJson(
-                encrypt_string(&self.passwd, self.identifier.as_str()),
-                self.records
-                    .values()
-                    .map(|rec| rec.encrypt(&self.passwd))
-                    .collect::<Vec<EncryptedRecord>>(),
-            ),
-        )
-        .with_context(|| format!("Failed json writing {:?}", self.file))?;
+        tmp_file.write_all(&self.serialize_records(&self.records)?)?;
 
         tmp_file.flush()?;
         tmp_file.persist(self.file.as_path())?;
@@ -207,10 +213,7 @@ impl RecordsRepository for RecordsFileRepository {
         Ok(())
     }
     async fn dump(&self) -> Result<Vec<u8>> {
-        let mut buff = Vec::new();
-        File::open(&self.file)?.read_to_end(&mut buff)?;
-
-        Ok(buff)
+        self.serialize_records(&self.records)
     }
 }
 
@@ -223,7 +226,7 @@ impl RepositoriesSource<RecordsFileRepository> for NamedFileRepositories {
     ) -> CreateRepositoryResult<RecordsFileRepository> {
         let path = self
             .repository_path(repository_name)
-            .map_err(CreateRepositoryError::UnexpectedError)?;
+            .map_err(|err| CreateRepositoryError::InvalidRepositoryName(err.to_string()))?;
         if path.exists() {
             return Err(CreateRepositoryError::RepositoryAlreadyExists);
         }
@@ -243,7 +246,7 @@ impl RepositoriesSource<RecordsFileRepository> for NamedFileRepositories {
     ) -> OpenResult<RecordsFileRepository> {
         let path = self
             .repository_path(repository_name)
-            .map_err(RepositoryOpenError::OpenError)?;
+            .map_err(|err| RepositoryOpenError::InvalidRepositoryName(err.to_string()))?;
         OpenRecordsFileRepository(path).open(passwd).await
     }
 }

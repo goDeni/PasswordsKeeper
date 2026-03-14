@@ -21,6 +21,10 @@ cargo run -p tui -- --data-dir /path/to/passwords_keeper_tui_data
 
 Repository file: `{data_dir}/repo`
 
+## CLI parameters
+
+- `--data-dir <PATH>`: Use `PATH` as the TUI data directory. This overrides `PASSWORDS_KEEPER_TUI_DATA`.
+
 ## Requirements
 
 - **Clipboard support**: On Linux/Wayland, requires `wl-clipboard` package installed for password copying functionality (`wl-copy` command)

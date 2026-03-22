@@ -35,9 +35,9 @@ where
     T: RecordsRepository,
 {
     async fn init(&mut self) -> Result<Vec<CtxResult>> {
-        let result: CtxResult = match self.repo.get(&self.record_id)? {
+        let result: CtxResult = match self.repo.get(&self.record_id).await? {
             Some(record) => CtxResult::Buttons(
-                record_as_message(record),
+                record_as_message(&record),
                 vec![
                     vec![(EDIT_RECORD.into(), "✏️".into())],
                     vec![(REMOVE_RECORD.into(), "❌".into())],
@@ -63,8 +63,8 @@ where
                 self.repo.clone(),
             ))),
             Some(REMOVE_RECORD) => {
-                self.repo.delete(&self.record_id)?;
-                self.repo.save()?;
+                self.repo.delete(&self.record_id).await?;
+                self.repo.save().await?;
                 CtxResult::NewCtx(Box::new(ViewRepoDialog::new(self.repo.clone())))
             }
             Some(CLOSE_VIEW) => CtxResult::NewCtx(Box::new(ViewRepoDialog::new(self.repo.clone()))),

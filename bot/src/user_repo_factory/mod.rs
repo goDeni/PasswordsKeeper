@@ -1,6 +1,7 @@
 pub mod file;
 
 use anyhow::Result;
+use async_trait::async_trait;
 use sec_store::repository::OpenResult;
 use std::fmt::Display;
 use std::path::Path;
@@ -39,14 +40,19 @@ impl Display for RepositoryLoadError {
 }
 
 pub type UserId = String;
+#[async_trait]
 pub trait RepositoriesFactory<T>: Clone + Sync + Send + 'static {
     fn user_has_repository(&self, user_id: &UserId) -> bool;
-    fn get_user_repository(&self, user_id: &UserId, passwd: String) -> OpenResult<T>;
-    fn load_user_repository<P: AsRef<Path>>(
+    async fn get_user_repository(&self, user_id: &UserId, passwd: String) -> OpenResult<T>;
+    async fn load_user_repository<P: AsRef<Path> + Send>(
         &self,
         user_id: &UserId,
         passwd: String,
         file: P,
     ) -> LoadResult<T>;
-    fn initialize_user_repository(&self, user_id: &UserId, passwd: String) -> InitRepoResult<T>;
+    async fn initialize_user_repository(
+        &self,
+        user_id: &UserId,
+        passwd: String,
+    ) -> InitRepoResult<T>;
 }

@@ -1,5 +1,5 @@
 [workspace]
-members = ["bot", "tui"]
+members = ["bot", "sec_store", "sec_store_server", "stated_dialogues", "tui"]
 resolver = "2"
 
 [workspace.package]
@@ -14,4 +14,3 @@ repository = "https://github.com/goDeni/PasswordsKeeper"
 [profile.dist]
 inherits = "release"
 lto = "thin"
-

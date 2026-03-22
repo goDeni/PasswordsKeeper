@@ -1,8 +1,10 @@
 .DS_Store
 passwords_keeper_bot_data
 passwords_keeper_tui_data
+certs/
 .vscode
 target/
 .env
 whitelist
 .codex/
+AGENTS.md

@@ -1,0 +1,27 @@
+[package]
+name = "sec_store_server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow = "1.0.100"
+axum = "0.8.6"
+axum-server = { version = "0.7.2", features = ["tls-rustls-no-provider"] }
+clap = { version = "4.6.0", features = ["derive"] }
+http = "1.3.1"
+rustls = "0.23.32"
+rustls-pemfile = "2.2.0"
+sec_store = { path = "../sec_store" }
+serde = { version = "1.0.228", features = ["derive"] }
+tokio = { version = "1.48.0", features = ["macros", "rt-multi-thread", "sync"] }
+tower-http = { version = "0.6.6", features = ["trace"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.20", features = ["fmt", "env-filter"] }
+uuid = { version = "1.19.0", features = ["v4", "fast-rng"] }
+
+[dev-dependencies]
+reqwest = { version = "0.12.24", default-features = false, features = ["json", "rustls-tls"] }
+tempfile = "3.23.0"

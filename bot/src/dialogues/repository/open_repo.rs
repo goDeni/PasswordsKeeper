@@ -69,12 +69,18 @@ where
                     match self
                         .factory
                         .get_user_repository(&user_id.clone().into(), passwd)
+                        .await
                     {
                         Ok(repo) => Ok(CtxResult::NewCtx(Box::new(ViewRepoDialog::new(repo)))),
                         Err(RepositoryOpenError::WrongPassword) => Ok(CtxResult::Messages(vec![
                             "Wrong password 🤨. Try again".into(),
                         ])),
                         Err(RepositoryOpenError::DoesntExist) => Ok(CtxResult::CloseCtx),
+                        Err(RepositoryOpenError::InvalidRepositoryName(_)) => {
+                            Ok(CtxResult::Messages(vec![
+                                "Repository configuration is invalid".into(),
+                            ]))
+                        }
                         Err(error) => Err(error),
                     }
                 }

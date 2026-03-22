@@ -114,8 +114,8 @@ where
                 }
                 AddRecordState::Description(mut new_record) => {
                     new_record.description = Some(text);
-                    self.repo.add_record(new_record.into()).unwrap();
-                    self.repo.save().inspect_err(|_err| {
+                    self.repo.add_record(new_record.into()).await.unwrap();
+                    self.repo.save().await.inspect_err(|_err| {
                         log::error!(
                             "Failed repository saving during new record saving for {:?}",
                             message.user_id

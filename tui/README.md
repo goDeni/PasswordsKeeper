@@ -9,21 +9,37 @@ cargo run -p tui
 # or
 just run-tui
 # or
-cargo run -p tui -- --data-dir /path/to/passwords_keeper_tui_data
+cargo run -p tui -- --repo-file /path/to/custom-repo
+# or
+cargo run -p tui -- --connection remote --remote-config /path/to/remote-repo.toml
 ```
 
-## Data directory
+## Repository connection
 
-- Default: `./passwords_keeper_tui_data` (relative to current working directory)
-- Override: set `PASSWORDS_KEEPER_TUI_DATA` to a directory path
-- CLI override: pass `--data-dir /path/to/dir`
-- Precedence: `--data-dir` overrides `PASSWORDS_KEEPER_TUI_DATA`
+- File mode is the default.
+- In file mode:
+  - Default repository file: `./passwords_keeper_tui_data/repo` (relative to current working directory)
+  - Override with `--repo-file /path/to/repo-file`
+- In remote mode:
+  - Pass `--connection remote --remote-config /path/to/remote-repo.toml`
+  - The TOML file defines the HTTPS server, client certificate files, and the remote repository name
 
-Repository file: `{data_dir}/repo`
+Example `remote-repo.toml`:
+
+```toml
+base_url = "https://127.0.0.1:8443"
+client_identity_pem_path = "client-identity.pem"
+ca_cert_pem_path = "ca.pem"
+repository_name = "demo"
+```
+
+Relative certificate paths are resolved relative to the TOML file location.
 
 ## CLI parameters
 
-- `--data-dir <PATH>`: Use `PATH` as the TUI data directory. This overrides `PASSWORDS_KEEPER_TUI_DATA`.
+- `--connection <file|remote>`: Choose whether the TUI opens a local repository file or connects through the server.
+- `--repo-file <PATH>`: Use `PATH` as the repository file when `--connection=file`.
+- `--remote-config <PATH>`: Load remote connection settings from a TOML file when `--connection=remote`.
 
 ## Requirements
 

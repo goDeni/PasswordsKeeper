@@ -10,19 +10,32 @@ pub use add_record::AddRecordDialogue;
 pub use view_record::ViewRecordDialogue;
 pub use welcome::WelcomeDialogue;
 
-pub trait Dialogue: std::fmt::Debug {
+use sec_store::repository::RecordsRepository;
+
+use crate::repo::RepositoryFactory;
+
+pub trait Dialogue<F, R>: std::fmt::Debug
+where
+    F: RepositoryFactory<R>,
+    R: RecordsRepository,
+{
     fn draw(&mut self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect);
-    fn handle_key(&mut self, k: crossterm::event::KeyEvent) -> DialogueResult;
-    fn on_input_submit(&mut self, value: String) -> DialogueResult;
-    fn on_input_cancel(&mut self) -> DialogueResult;
+    fn handle_key(&mut self, k: crossterm::event::KeyEvent) -> DialogueResult<F, R>;
+    fn on_input_submit(&mut self, value: String) -> DialogueResult<F, R>;
+    fn on_input_cancel(&mut self) -> DialogueResult<F, R>;
+    fn on_exit(&mut self) {}
 }
 
 #[derive(Debug)]
-pub enum DialogueResult {
+pub enum DialogueResult<F, R>
+where
+    F: RepositoryFactory<R>,
+    R: RecordsRepository,
+{
     NoOp,
-    ChangeScreen(Box<dyn Dialogue>),
+    ChangeScreen(Box<dyn Dialogue<F, R>>),
     ChangeScreenAndStartInput {
-        dialogue: Box<dyn Dialogue>,
+        dialogue: Box<dyn Dialogue<F, R>>,
         prompt: String,
         password: bool,
     },

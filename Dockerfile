@@ -9,6 +9,7 @@ COPY ./sec_store ./sec_store
 COPY ./bot ./bot
 COPY ./stated_dialogues ./stated_dialogues
 COPY ./tui ./tui
+COPY ./sec_store_server ./sec_store_server
 
 RUN cargo build --bin bot --verbose --release
 

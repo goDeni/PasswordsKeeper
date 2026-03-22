@@ -9,18 +9,24 @@ use ratatui::{
     widgets::{Block, Clear, ListState, Paragraph, Wrap},
     DefaultTerminal, Frame,
 };
+use sec_store::repository::RecordsRepository;
 
 use crate::dialogues::Dialogue;
 use crate::input::InputState;
+use crate::repo::{default_repo_path, resolve_data_dir, FileRepositoryFactory, RepositoryFactory};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppConfig {
     pub data_dir: PathBuf,
 }
 
-pub struct App {
+pub struct App<F, R>
+where
+    F: RepositoryFactory<R>,
+    R: RecordsRepository,
+{
     pub config: AppConfig,
-    pub screen: Box<dyn Dialogue>,
+    pub screen: Box<dyn Dialogue<F, R>>,
     pub input: Option<InputState>,
     pub list_state: ListState,
     pub error: Option<String>,
@@ -28,20 +34,28 @@ pub struct App {
     pub exit: bool,
 }
 
-impl Default for App {
+impl Default for App<FileRepositoryFactory, sec_store::repository::file::RecordsFileRepository> {
     fn default() -> Self {
-        Self::new(AppConfig {
-            data_dir: crate::repo::resolve_data_dir(None),
-        })
+        let repo_path = default_repo_path();
+        Self::new(
+            AppConfig {
+                data_dir: resolve_data_dir(&repo_path),
+            },
+            FileRepositoryFactory::new(repo_path),
+        )
     }
 }
 
-impl App {
-    pub fn new(config: AppConfig) -> Self {
+impl<F, R> App<F, R>
+where
+    F: RepositoryFactory<R>,
+    R: RecordsRepository,
+{
+    pub fn new(config: AppConfig, factory: F) -> Self {
         use crate::dialogues::WelcomeDialogue;
         Self {
             config,
-            screen: Box::new(WelcomeDialogue::new(Some(0))),
+            screen: Box::new(WelcomeDialogue::new(factory, Some(0))),
             input: None,
             list_state: ListState::default(),
             error: None,
@@ -211,6 +225,7 @@ impl App {
         }
 
         if k.code == KeyCode::Char('q') {
+            self.screen.on_exit();
             self.exit = true;
         } else {
             let result = self.screen.handle_key(k);
@@ -222,7 +237,7 @@ impl App {
         self.input = Some(InputState::new(prompt, password));
     }
 
-    fn handle_dialogue_result(&mut self, result: crate::dialogues::DialogueResult) {
+    fn handle_dialogue_result(&mut self, result: crate::dialogues::DialogueResult<F, R>) {
         use crate::dialogues::DialogueResult;
         match result {
             DialogueResult::NoOp => {}

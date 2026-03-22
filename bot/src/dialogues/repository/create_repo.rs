@@ -89,9 +89,10 @@ where
                 match self
                     .factory
                     .initialize_user_repository(&user_id.clone().into(), passwd)
+                    .await
                 {
                     Ok(mut repo) => {
-                        repo.save().map_err(|err| {
+                        repo.save().await.map_err(|err| {
                             log::error!("Failed repository saving: {err}");
                             err
                         })?;

@@ -1,4 +1,7 @@
 use crate::dialogues::{AddRecordDialogue, ViewRecordDialogue, WelcomeDialogue};
+use crate::dialogues::{Dialogue, DialogueResult};
+use crate::fields::{RECORD_LOGIN_FIELD, RECORD_NAME_FIELD};
+use crate::repo::{self, RepositoryFactory};
 use crossterm::event::KeyCode;
 use ratatui::symbols::border;
 use ratatui::{
@@ -8,36 +11,48 @@ use ratatui::{
     widgets::{Block, List, ListItem, ListState, Paragraph},
     Frame,
 };
-use sec_store::repository::file::RecordsFileRepository;
 use sec_store::repository::RecordsRepository;
-
-use crate::dialogues::{Dialogue, DialogueResult};
-use crate::fields::{RECORD_LOGIN_FIELD, RECORD_NAME_FIELD};
 
 type RecordId = String;
 
 #[derive(Debug)]
-pub struct ViewRepoDialogue {
-    repo: RecordsFileRepository,
+pub struct ViewRepoDialogue<F, R> {
+    factory: F,
+    repo: R,
     list_state: ListState,
     search_query: String,
     is_searching: bool,
+    records_error: Option<String>,
 }
 
-impl ViewRepoDialogue {
-    pub fn new(repo: RecordsFileRepository, selected: Option<usize>) -> Self {
+impl<F, R> ViewRepoDialogue<F, R>
+where
+    R: RecordsRepository,
+{
+    pub fn new(factory: F, repo: R, selected: Option<usize>) -> Self {
         let mut state = ListState::default();
         state.select(selected);
         Self {
+            factory,
             repo,
             list_state: state,
             search_query: String::new(),
             is_searching: false,
+            records_error: None,
         }
     }
 
-    fn get_filtered_records(&self) -> Vec<(RecordId, String)> {
-        let records = self.repo.get_records().unwrap_or_default();
+    fn get_filtered_records(&mut self) -> Vec<(RecordId, String)> {
+        let records = match repo::get_records(&self.repo) {
+            Ok(records) => {
+                self.records_error = None;
+                records
+            }
+            Err(err) => {
+                self.records_error = Some(err.to_string());
+                return Vec::new();
+            }
+        };
         // Collect records with both name and login for filtering
         let mut rows: Vec<(RecordId, String, Option<String>)> = records
             .iter()
@@ -69,7 +84,11 @@ impl ViewRepoDialogue {
     }
 }
 
-impl Dialogue for ViewRepoDialogue {
+impl<F, R> Dialogue<F, R> for ViewRepoDialogue<F, R>
+where
+    F: RepositoryFactory<R>,
+    R: RecordsRepository,
+{
     fn draw(&mut self, frame: &mut Frame, area: Rect) {
         let block = Block::bordered()
             .title(" Repository ")
@@ -79,6 +98,15 @@ impl Dialogue for ViewRepoDialogue {
         frame.render_widget(block, area);
 
         let rows = self.get_filtered_records();
+
+        if let Some(error) = &self.records_error {
+            frame.render_widget(
+                Paragraph::new(format!("Failed to load records: {error}"))
+                    .style(Style::new().red()),
+                inner,
+            );
+            return;
+        }
 
         let mut items: Vec<ListItem> = rows
             .iter()
@@ -147,7 +175,7 @@ impl Dialogue for ViewRepoDialogue {
         );
     }
 
-    fn handle_key(&mut self, k: crossterm::event::KeyEvent) -> DialogueResult {
+    fn handle_key(&mut self, k: crossterm::event::KeyEvent) -> DialogueResult<F, R> {
         // Handle search mode input
         if self.is_searching {
             match k.code {
@@ -186,6 +214,9 @@ impl Dialogue for ViewRepoDialogue {
         }
 
         let rows = self.get_filtered_records();
+        if let Some(error) = self.records_error.clone() {
+            return DialogueResult::Error(format!("Failed to load records: {error}"));
+        }
         let n_rec = rows.len();
         let n = n_rec + 2; // Add, Close
         let sel = self
@@ -206,52 +237,73 @@ impl Dialogue for ViewRepoDialogue {
             }
             KeyCode::Char('a') if !self.is_searching => DialogueResult::ChangeScreenAndStartInput {
                 dialogue: Box::new(crate::dialogues::add_record::AddRecordDialogue::new(
+                    self.factory.clone(),
                     self.repo.clone(),
                 )),
                 prompt: "Enter password".to_string(),
                 password: true,
             },
-            KeyCode::Char('c') if !self.is_searching => DialogueResult::ChangeScreen(Box::new(
-                crate::dialogues::welcome::WelcomeDialogue::new(Some(0)),
-            )),
+            KeyCode::Char('c') if !self.is_searching => {
+                let _ = repo::close_connection(&self.repo);
+                DialogueResult::ChangeScreen(Box::new(
+                    crate::dialogues::welcome::WelcomeDialogue::new(self.factory.clone(), Some(0)),
+                ))
+            }
             KeyCode::Enter => {
                 if sel < n_rec {
                     let rid = rows[sel].0.clone();
                     DialogueResult::ChangeScreen(Box::new(ViewRecordDialogue::new(
+                        self.factory.clone(),
                         self.repo.clone(),
                         rid,
                         false,
                     )))
                 } else if sel == n_rec {
                     DialogueResult::ChangeScreenAndStartInput {
-                        dialogue: Box::new(AddRecordDialogue::new(self.repo.clone())),
+                        dialogue: Box::new(AddRecordDialogue::new(
+                            self.factory.clone(),
+                            self.repo.clone(),
+                        )),
                         prompt: "Enter password".to_string(),
                         password: true,
                     }
                 } else {
-                    DialogueResult::ChangeScreen(Box::new(WelcomeDialogue::new(Some(0))))
+                    let _ = repo::close_connection(&self.repo);
+                    DialogueResult::ChangeScreen(Box::new(WelcomeDialogue::new(
+                        self.factory.clone(),
+                        Some(0),
+                    )))
                 }
             }
             _ => DialogueResult::NoOp,
         }
     }
 
-    fn on_input_submit(&mut self, _value: String) -> DialogueResult {
+    fn on_input_submit(&mut self, _value: String) -> DialogueResult<F, R> {
         DialogueResult::NoOp
     }
 
-    fn on_input_cancel(&mut self) -> DialogueResult {
+    fn on_input_cancel(&mut self) -> DialogueResult<F, R> {
         DialogueResult::NoOp
+    }
+
+    fn on_exit(&mut self) {
+        let _ = repo::close_connection(&self.repo);
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::fmt;
+
+    use anyhow::anyhow;
+    use async_trait::async_trait;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use tempfile::TempDir;
 
     use crate::dialogues::{Dialogue, DialogueResult};
     use crate::fields::{RECORD_LOGIN_FIELD, RECORD_NAME_FIELD, RECORD_PASSWD_FIELD};
+    use crate::repo::{FileRepositoryFactory, RepositoryFactory};
     use crate::test_helpers::test_password;
     use sec_store::record::Record;
     use sec_store::repository::file::RecordsFileRepository;
@@ -263,7 +315,7 @@ mod tests {
         KeyEvent::new(code, KeyModifiers::NONE)
     }
 
-    fn repo_with_records() -> (TempDir, RecordsFileRepository) {
+    fn repo_with_records() -> (TempDir, FileRepositoryFactory, RecordsFileRepository) {
         let tmp = TempDir::new().expect("temp dir");
         let path = tmp.path().join("repo");
         let mut repo = RecordsFileRepository::new(path, test_password());
@@ -282,16 +334,84 @@ mod tests {
             (RECORD_LOGIN_FIELD.to_string(), "octocat".to_string()),
         ]);
 
-        repo.add_record(rec1).expect("add rec1");
-        repo.add_record(rec2).expect("add rec2");
-        repo.save().expect("save repo");
-        (tmp, repo)
+        crate::runtime::block_on(repo.add_record(rec1)).expect("add rec1");
+        crate::runtime::block_on(repo.add_record(rec2)).expect("add rec2");
+        crate::runtime::block_on(repo.save()).expect("save repo");
+        let factory = FileRepositoryFactory::new(tmp.path().join("repo"));
+        (tmp, factory, repo)
+    }
+
+    #[derive(Clone)]
+    struct FailingRepo;
+
+    #[derive(Clone)]
+    struct FailingRepoFactory;
+
+    impl fmt::Debug for FailingRepoFactory {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("FailingRepoFactory")
+        }
+    }
+
+    impl RepositoryFactory<FailingRepo> for FailingRepoFactory {
+        fn has_repo(&self) -> bool {
+            true
+        }
+
+        fn create_repo(&self, _password: String) -> anyhow::Result<FailingRepo> {
+            Ok(FailingRepo)
+        }
+
+        fn open_repo(&self, _password: String) -> anyhow::Result<FailingRepo> {
+            Ok(FailingRepo)
+        }
+    }
+
+    impl fmt::Debug for FailingRepo {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("FailingRepo")
+        }
+    }
+
+    #[async_trait]
+    impl RecordsRepository for FailingRepo {
+        async fn cancel(&mut self) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn save(&mut self) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn get_records(&self) -> anyhow::Result<Vec<Record>> {
+            Err(anyhow!("session expired"))
+        }
+
+        async fn get(&self, _record_id: &String) -> anyhow::Result<Option<Record>> {
+            Ok(None)
+        }
+
+        async fn update(&mut self, _record: Record) -> sec_store::repository::UpdateResult<()> {
+            Ok(())
+        }
+
+        async fn delete(&mut self, _record_id: &String) -> sec_store::repository::UpdateResult<()> {
+            Ok(())
+        }
+
+        async fn add_record(&mut self, _record: Record) -> sec_store::repository::AddResult<()> {
+            Ok(())
+        }
+
+        async fn dump(&self) -> anyhow::Result<Vec<u8>> {
+            Ok(Vec::new())
+        }
     }
 
     #[test]
     fn test_navigation_wraps_up() {
-        let (_tmp, repo) = repo_with_records();
-        let mut dialogue = ViewRepoDialogue::new(repo, Some(0));
+        let (_tmp, factory, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(factory, repo, Some(0));
         let res = dialogue.handle_key(key(KeyCode::Up));
 
         assert!(matches!(res, DialogueResult::NoOp));
@@ -300,8 +420,8 @@ mod tests {
 
     #[test]
     fn test_navigation_wraps_down() {
-        let (_tmp, repo) = repo_with_records();
-        let mut dialogue = ViewRepoDialogue::new(repo, Some(3));
+        let (_tmp, factory, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(factory, repo, Some(3));
         let res = dialogue.handle_key(key(KeyCode::Down));
 
         assert!(matches!(res, DialogueResult::NoOp));
@@ -310,8 +430,8 @@ mod tests {
 
     #[test]
     fn test_search_starts_on_slash() {
-        let (_tmp, repo) = repo_with_records();
-        let mut dialogue = ViewRepoDialogue::new(repo, Some(0));
+        let (_tmp, factory, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(factory, repo, Some(0));
         let res = dialogue.handle_key(key(KeyCode::Char('/')));
 
         assert!(matches!(res, DialogueResult::NoOp));
@@ -321,8 +441,8 @@ mod tests {
 
     #[test]
     fn test_search_typing_and_backspace() {
-        let (_tmp, repo) = repo_with_records();
-        let mut dialogue = ViewRepoDialogue::new(repo, Some(1));
+        let (_tmp, factory, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(factory, repo, Some(1));
         let _ = dialogue.handle_key(key(KeyCode::Char('/')));
 
         let res1 = dialogue.handle_key(key(KeyCode::Char('m')));
@@ -337,8 +457,8 @@ mod tests {
 
     #[test]
     fn test_search_esc_clears_and_stops_search() {
-        let (_tmp, repo) = repo_with_records();
-        let mut dialogue = ViewRepoDialogue::new(repo, Some(1));
+        let (_tmp, factory, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(factory, repo, Some(1));
         let _ = dialogue.handle_key(key(KeyCode::Char('/')));
         let _ = dialogue.handle_key(key(KeyCode::Char('x')));
         let res = dialogue.handle_key(key(KeyCode::Esc));
@@ -351,8 +471,8 @@ mod tests {
 
     #[test]
     fn test_filter_matches_name_case_insensitive() {
-        let (_tmp, repo) = repo_with_records();
-        let mut dialogue = ViewRepoDialogue::new(repo, Some(0));
+        let (_tmp, factory, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(factory, repo, Some(0));
         dialogue.is_searching = true;
         dialogue.search_query = "gIt".to_string();
 
@@ -363,8 +483,8 @@ mod tests {
 
     #[test]
     fn test_filter_matches_login_case_insensitive() {
-        let (_tmp, repo) = repo_with_records();
-        let mut dialogue = ViewRepoDialogue::new(repo, Some(0));
+        let (_tmp, factory, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(factory, repo, Some(0));
         dialogue.is_searching = true;
         dialogue.search_query = "EXAMPLE".to_string();
 
@@ -375,8 +495,8 @@ mod tests {
 
     #[test]
     fn test_enter_record_changes_to_view_record() {
-        let (_tmp, repo) = repo_with_records();
-        let mut dialogue = ViewRepoDialogue::new(repo, Some(0));
+        let (_tmp, factory, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(factory, repo, Some(0));
 
         let res = dialogue.handle_key(key(KeyCode::Enter));
         assert!(matches!(res, DialogueResult::ChangeScreen(_)));
@@ -384,8 +504,8 @@ mod tests {
 
     #[test]
     fn test_enter_in_search_uses_filtered_selection() {
-        let (_tmp, repo) = repo_with_records();
-        let mut dialogue = ViewRepoDialogue::new(repo, Some(0));
+        let (_tmp, factory, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(factory, repo, Some(0));
         let _ = dialogue.handle_key(key(KeyCode::Char('/')));
         let _ = dialogue.handle_key(key(KeyCode::Char('o')));
         let _ = dialogue.handle_key(key(KeyCode::Char('c')));
@@ -402,8 +522,8 @@ mod tests {
 
     #[test]
     fn test_char_a_starts_add_record_input() {
-        let (_tmp, repo) = repo_with_records();
-        let mut dialogue = ViewRepoDialogue::new(repo, Some(0));
+        let (_tmp, factory, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(factory, repo, Some(0));
 
         let res = dialogue.handle_key(key(KeyCode::Char('a')));
         match res {
@@ -419,16 +539,16 @@ mod tests {
 
     #[test]
     fn test_char_c_closes_repository() {
-        let (_tmp, repo) = repo_with_records();
-        let mut dialogue = ViewRepoDialogue::new(repo, Some(0));
+        let (_tmp, factory, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(factory, repo, Some(0));
         let res = dialogue.handle_key(key(KeyCode::Char('c')));
         assert!(matches!(res, DialogueResult::ChangeScreen(_)));
     }
 
     #[test]
     fn test_enter_add_row_starts_add_record_input() {
-        let (_tmp, repo) = repo_with_records();
-        let mut dialogue = ViewRepoDialogue::new(repo, Some(2));
+        let (_tmp, factory, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(factory, repo, Some(2));
         let res = dialogue.handle_key(key(KeyCode::Enter));
 
         match res {
@@ -439,6 +559,21 @@ mod tests {
                 assert!(password);
             }
             _ => panic!("expected ChangeScreenAndStartInput"),
+        }
+    }
+
+    #[test]
+    fn test_record_load_error_is_surfaced() {
+        let mut dialogue = ViewRepoDialogue::new(FailingRepoFactory, FailingRepo, Some(0));
+
+        let result = dialogue.handle_key(key(KeyCode::Enter));
+
+        match result {
+            DialogueResult::Error(message) => {
+                assert!(message.contains("Failed to load records"));
+                assert!(message.contains("session expired"));
+            }
+            _ => panic!("expected error"),
         }
     }
 }

@@ -39,7 +39,8 @@ where
     async fn init(&mut self) -> Result<Vec<CtxResult>> {
         let mut records_buttons = self
             .repo
-            .get_records()?
+            .get_records()
+            .await?
             .into_iter()
             .map(|record| {
                 (
@@ -83,7 +84,7 @@ where
             Some(ADD_RECORD) => {
                 CtxResult::NewCtx(Box::new(AddRecordDialog::new(self.repo.clone())))
             }
-            Some(record_id) => match self.repo.get(&record_id.to_string())? {
+            Some(record_id) => match self.repo.get(&record_id.to_string()).await? {
                 Some(_) => CtxResult::NewCtx(Box::new(ViewRecordDialog::new(
                     self.repo.clone(),
                     record_id.to_string(),
@@ -105,7 +106,7 @@ where
             (Some(BACKUP_COMMAND), Some(user_id)) => {
                 vec![
                     CtxResult::Document(OutgoingDocument::new(
-                        self.repo.dump()?,
+                        self.repo.dump().await?,
                         format!("user_{}.json", user_id),
                     )),
                     CtxResult::RemoveMessages(vec![command.id]),

@@ -54,8 +54,8 @@ where
     T: RecordsRepository,
 {
     async fn init(&mut self) -> Result<Vec<CtxResult>> {
-        match self.repo.get(&self.record_id)? {
-            Some(record) => Ok(vec![get_edit_record_buttons(record)]),
+        match self.repo.get(&self.record_id).await? {
+            Some(record) => Ok(vec![get_edit_record_buttons(&record)]),
             None => {
                 log::warn!(
                     "Tried to view record that doesn't exist. record_id={}",
@@ -86,13 +86,13 @@ where
             .as_str()
         {
             _CANCEL_EDIT => {
-                self.repo.cancel()?;
+                self.repo.cancel().await?;
                 Ok(vec![CtxResult::NewCtx(Box::new(ViewRepoDialog::new(
                     self.repo.clone(),
                 )))])
             }
             _SAVE_RESULT => {
-                self.repo.save()?;
+                self.repo.save().await?;
                 Ok(vec![CtxResult::NewCtx(Box::new(ViewRecordDialog::new(
                     self.repo.clone(),
                     self.record_id.clone(),
@@ -129,18 +129,14 @@ where
     async fn handle_message(&mut self, message: Message) -> Result<Vec<CtxResult>> {
         match (self.state.clone(), message.text) {
             (DialogState::FieldEdit(field), Some(msg_text)) => {
-                let mut record = self
-                    .repo
-                    .get(&self.record_id)?
-                    .with_context(|| {
-                        format!("Missed record {} in FieldEdit state", self.record_id)
-                    })?
-                    .clone();
+                let mut record = self.repo.get(&self.record_id).await?.with_context(|| {
+                    format!("Missed record {} in FieldEdit state", self.record_id)
+                })?;
 
                 record.update_field(field, msg_text)?;
                 let edit_buttons = get_edit_record_buttons(&record);
 
-                self.repo.update(record)?;
+                self.repo.update(record).await?;
                 self.state = DialogState::WaitForSelect;
                 Ok(vec![
                     CtxResult::RemoveMessages(
@@ -159,7 +155,7 @@ where
     async fn handle_command(&mut self, command: Message) -> Result<Vec<CtxResult>> {
         match (self.state.clone(), command.text()) {
             (_, Some(CANCEL_COMMAND)) => {
-                self.repo.cancel()?;
+                self.repo.cancel().await?;
                 Ok(vec![
                     CtxResult::RemoveMessages(vec![command.id]),
                     CtxResult::NewCtx(Box::new(EditRecordDialog::new(

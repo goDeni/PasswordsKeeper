@@ -1,9 +1,10 @@
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
 
 use anyhow::{anyhow, Context, Result};
+use async_trait::async_trait;
 use tempfile::NamedTempFile;
 use uuid::Uuid;
 
@@ -12,7 +13,8 @@ use crate::cipher::{decrypt_string, encrypt_string, DecryptionError, EncryptedDa
 use crate::record::EncryptedRecord;
 use crate::record::{Record, RecordId};
 use crate::repository::{
-    AddResult, OpenRepository, OpenResult, RecordsRepository, RepositoryOpenError, UpdateResult,
+    AddResult, CreateRepositoryError, CreateRepositoryResult, OpenRepository, OpenResult,
+    RecordsRepository, RepositoriesSource, RepositoryOpenError, UpdateResult,
 };
 use serde::{Deserialize, Serialize};
 use std::io::prelude::Read;
@@ -25,7 +27,7 @@ impl From<String> for RepositoryId {
     }
 }
 impl RepositoryId {
-    fn as_str(&self) -> &str {
+    pub fn as_str(&self) -> &str {
         &self.0
     }
 }
@@ -42,6 +44,11 @@ pub struct RecordsFileRepository {
 }
 pub struct OpenRecordsFileRepository(pub PathBuf);
 
+#[derive(Debug, Clone)]
+pub struct NamedFileRepositories {
+    base_dir: PathBuf,
+}
+
 #[derive(Serialize, Deserialize)]
 struct RawRepositoryJson(EncryptedData, Vec<EncryptedRecord>);
 
@@ -55,10 +62,58 @@ impl RecordsFileRepository {
             saved_records: HashMap::new(),
         }
     }
+
+    pub async fn persisted_dump(&self) -> Result<Vec<u8>> {
+        let mut buff = Vec::new();
+        File::open(&self.file)?.read_to_end(&mut buff)?;
+
+        Ok(buff)
+    }
+
+    fn serialize_records(&self, records: &RecordsMap) -> Result<Vec<u8>> {
+        serde_json::to_vec(&RawRepositoryJson(
+            encrypt_string(&self.passwd, self.identifier.as_str()),
+            records
+                .values()
+                .map(|rec| rec.encrypt(&self.passwd))
+                .collect::<Vec<EncryptedRecord>>(),
+        ))
+        .with_context(|| format!("Failed json dump serialization {:?}", self.file))
+    }
+
+    fn create_new_on_disk(&self) -> Result<()> {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&self.file)
+            .with_context(|| format!("Failed to create repository file {:?}", self.file))?;
+        file.write_all(&self.serialize_records(&self.records)?)?;
+        file.flush()?;
+        Ok(())
+    }
 }
 
+impl NamedFileRepositories {
+    pub fn new(base_dir: PathBuf) -> Self {
+        Self { base_dir }
+    }
+
+    fn repository_path(&self, repository_name: &str) -> Result<PathBuf> {
+        if repository_name.is_empty()
+            || !repository_name
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
+        {
+            return Err(anyhow!(repository_name.to_string()));
+        }
+
+        Ok(self.base_dir.join(format!("{repository_name}.json")))
+    }
+}
+
+#[async_trait]
 impl OpenRepository<RecordsFileRepository> for OpenRecordsFileRepository {
-    fn open(self, passwd: String) -> OpenResult<RecordsFileRepository> {
+    async fn open(self, passwd: String) -> OpenResult<RecordsFileRepository> {
         if !self.0.exists() {
             return Err(RepositoryOpenError::DoesntExist);
         }
@@ -105,29 +160,20 @@ impl OpenRepository<RecordsFileRepository> for OpenRecordsFileRepository {
     }
 }
 
+#[async_trait]
 impl RecordsRepository for RecordsFileRepository {
-    fn cancel(&mut self) -> Result<()> {
+    async fn cancel(&mut self) -> Result<()> {
         self.records = self.saved_records.clone();
         Ok(())
     }
 
-    fn save(&mut self) -> Result<()> {
+    async fn save(&mut self) -> Result<()> {
         let mut tmp_file = NamedTempFile::new_in(
             self.file
                 .parent()
                 .with_context(|| format!("Failed get parent directory for {:?}", self.file))?,
         )?;
-        serde_json::to_writer(
-            &tmp_file,
-            &RawRepositoryJson(
-                encrypt_string(&self.passwd, self.identifier.as_str()),
-                self.records
-                    .values()
-                    .map(|rec| rec.encrypt(&self.passwd))
-                    .collect::<Vec<EncryptedRecord>>(),
-            ),
-        )
-        .with_context(|| format!("Failed json writing {:?}", self.file))?;
+        tmp_file.write_all(&self.serialize_records(&self.records)?)?;
 
         tmp_file.flush()?;
         tmp_file.persist(self.file.as_path())?;
@@ -137,24 +183,25 @@ impl RecordsRepository for RecordsFileRepository {
         Ok(())
     }
 
-    fn get_records(&self) -> Result<Vec<&Record>> {
-        Ok(self.records.values().collect())
+    async fn get_records(&self) -> Result<Vec<Record>> {
+        Ok(self.records.values().cloned().collect())
     }
 
-    fn get(&mut self, record_id: &RecordId) -> Result<Option<&Record>> {
-        Ok(self.records.get(record_id))
+    async fn get(&self, record_id: &RecordId) -> Result<Option<Record>> {
+        Ok(self.records.get(record_id).cloned())
     }
 
-    fn update(&mut self, record: Record) -> UpdateResult<()> {
-        self.delete(&record.id)?;
-        self.add_record(record).unwrap();
+    async fn update(&mut self, record: Record) -> UpdateResult<()> {
+        self.delete(&record.id).await?;
+        self.add_record(record).await.unwrap();
 
         Ok(())
     }
 
-    fn delete(&mut self, record_id: &RecordId) -> UpdateResult<()> {
+    async fn delete(&mut self, record_id: &RecordId) -> UpdateResult<()> {
         if self
             .get(record_id)
+            .await
             .map_err(UpdateRecordError::UnxpectedError)?
             .is_none()
         {
@@ -164,9 +211,10 @@ impl RecordsRepository for RecordsFileRepository {
         Ok(())
     }
 
-    fn add_record(&mut self, record: Record) -> AddResult<()> {
+    async fn add_record(&mut self, record: Record) -> AddResult<()> {
         if self
             .get(&record.id)
+            .await
             .map_err(AddRecordError::UnxpectedError)?
             .is_some()
         {
@@ -175,11 +223,47 @@ impl RecordsRepository for RecordsFileRepository {
         self.records.insert(record.id.clone(), record);
         Ok(())
     }
-    fn dump(&self) -> Result<Vec<u8>> {
-        let mut buff = Vec::new();
-        File::open(&self.file)?.read_to_end(&mut buff)?;
+    async fn dump(&self) -> Result<Vec<u8>> {
+        self.serialize_records(&self.records)
+    }
+}
 
-        Ok(buff)
+#[async_trait]
+impl RepositoriesSource<RecordsFileRepository> for NamedFileRepositories {
+    async fn create_repository(
+        &self,
+        repository_name: &str,
+        passwd: String,
+    ) -> CreateRepositoryResult<RecordsFileRepository> {
+        let path = self
+            .repository_path(repository_name)
+            .map_err(|err| CreateRepositoryError::InvalidRepositoryName(err.to_string()))?;
+
+        let mut repository = RecordsFileRepository::new(path, passwd);
+        match repository.create_new_on_disk() {
+            Ok(()) => repository.saved_records = repository.records.clone(),
+            Err(err)
+                if err
+                    .root_cause()
+                    .downcast_ref::<std::io::Error>()
+                    .is_some_and(|io_err| io_err.kind() == std::io::ErrorKind::AlreadyExists) =>
+            {
+                return Err(CreateRepositoryError::RepositoryAlreadyExists);
+            }
+            Err(err) => return Err(CreateRepositoryError::UnexpectedError(err)),
+        }
+        Ok(repository)
+    }
+
+    async fn open_repository(
+        &self,
+        repository_name: &str,
+        passwd: String,
+    ) -> OpenResult<RecordsFileRepository> {
+        let path = self
+            .repository_path(repository_name)
+            .map_err(|err| RepositoryOpenError::InvalidRepositoryName(err.to_string()))?;
+        OpenRecordsFileRepository(path).open(passwd).await
     }
 }
 
@@ -193,16 +277,16 @@ mod tests {
         record::Record,
         repository::{
             file::{OpenRecordsFileRepository, RepositoryOpenError},
-            UpdateRecordError,
+            RepositoriesSource, UpdateRecordError,
         },
         repository::{OpenRepository, RecordsRepository},
     };
     use anyhow::Result;
 
-    use super::RecordsFileRepository;
+    use super::{NamedFileRepositories, RecordsFileRepository};
 
-    #[test]
-    fn test_repository_add_record() -> Result<()> {
+    #[tokio::test]
+    async fn test_repository_add_record() -> Result<()> {
         let tmp_dir = TempDir::new().unwrap();
         let file = tmp_dir.path().join("repo_file");
 
@@ -215,18 +299,18 @@ mod tests {
         let record = Record::new(fields);
         let mut repo = RecordsFileRepository::new(file, passwd);
 
-        repo.add_record(record.clone()).unwrap();
+        repo.add_record(record.clone()).await.unwrap();
 
-        assert_eq!(repo.get(&record.id)?.unwrap(), &record);
-        assert_eq!(repo.get_records()?, vec![&record]);
+        assert_eq!(repo.get(&record.id).await?.unwrap(), record);
+        assert_eq!(repo.get_records().await?, vec![record]);
 
         tmp_dir.close().unwrap();
 
         Ok(())
     }
 
-    #[test]
-    fn test_repository_saving() -> Result<()> {
+    #[tokio::test]
+    async fn test_repository_saving() -> Result<()> {
         let tmp_dir = TempDir::new().unwrap();
         let file = tmp_dir.path().join("repo_file");
 
@@ -238,14 +322,15 @@ mod tests {
 
         let passwd = "Passwd".to_string();
         let mut repo = RecordsFileRepository::new(file.clone(), passwd.clone());
-        repo.add_record(record).unwrap();
-        repo.save().unwrap();
+        repo.add_record(record).await.unwrap();
+        repo.save().await.unwrap();
 
         let new_repo = OpenRecordsFileRepository(file.clone())
             .open(passwd)
+            .await
             .unwrap();
 
-        assert_eq!(new_repo.get_records()?, repo.get_records()?);
+        assert_eq!(new_repo.get_records().await?, repo.get_records().await?);
         assert_eq!(new_repo.identifier, repo.identifier);
 
         tmp_dir.close().unwrap();
@@ -253,8 +338,8 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_repository_update_record() -> Result<()> {
+    #[tokio::test]
+    async fn test_repository_update_record() -> Result<()> {
         let tmp_dir = TempDir::new().unwrap();
         let file = tmp_dir.path().join("repo_file");
 
@@ -268,27 +353,27 @@ mod tests {
         let old_record = Record::new(fields);
         let mut repo = RecordsFileRepository::new(file, passwd);
 
-        repo.add_record(old_record.clone()).unwrap();
+        repo.add_record(old_record.clone()).await.unwrap();
 
-        let mut new_record = repo.get(&old_record.id)?.unwrap().clone();
+        let mut new_record = repo.get(&old_record.id).await?.unwrap();
         new_record
             .add_field("Field3".to_string(), "3".to_string())
             .unwrap();
 
-        repo.update(new_record.clone()).unwrap();
+        repo.update(new_record.clone()).await.unwrap();
 
-        assert_eq!(&new_record, repo.get(&new_record.id)?.unwrap());
-        assert_ne!(&old_record, repo.get(&new_record.id)?.unwrap());
+        assert_eq!(repo.get(&new_record.id).await?.unwrap(), new_record);
+        assert_ne!(repo.get(&old_record.id).await?.unwrap(), old_record);
 
-        assert_eq!(repo.get_records()?, vec![&new_record]);
+        assert_eq!(repo.get_records().await?, vec![new_record]);
 
         tmp_dir.close().unwrap();
 
         Ok(())
     }
 
-    #[test]
-    fn test_repository_delete_record() -> Result<()> {
+    #[tokio::test]
+    async fn test_repository_delete_record() -> Result<()> {
         let tmp_dir = TempDir::new().unwrap();
         let file = tmp_dir.path().join("repo_file");
 
@@ -302,18 +387,18 @@ mod tests {
         let record = Record::new(fields);
         let mut repo = RecordsFileRepository::new(file, passwd);
 
-        repo.add_record(record.clone()).unwrap();
-        repo.delete(&record.id).unwrap();
+        repo.add_record(record.clone()).await.unwrap();
+        repo.delete(&record.id).await.unwrap();
 
-        assert!(repo.get(&record.id)?.is_none());
-        assert!(repo.get_records()?.is_empty());
+        assert!(repo.get(&record.id).await?.is_none());
+        assert!(repo.get_records().await?.is_empty());
 
         assert!(matches!(
-            repo.update(record.clone()).unwrap_err(),
+            repo.update(record.clone()).await.unwrap_err(),
             UpdateRecordError::RecordDoesntExist
         ));
         assert!(matches!(
-            repo.delete(&record.id).unwrap_err(),
+            repo.delete(&record.id).await.unwrap_err(),
             UpdateRecordError::RecordDoesntExist
         ));
 
@@ -322,51 +407,53 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_repository_open_with_wrong_passwd() {
+    #[tokio::test]
+    async fn test_repository_open_with_wrong_passwd() {
         let tmp_dir = TempDir::new().unwrap();
 
         let mut repo = RecordsFileRepository::new(
             tmp_dir.path().join("repo_file"),
             "One password".to_string(),
         );
-        repo.save().unwrap();
+        repo.save().await.unwrap();
 
         let result = OpenRecordsFileRepository(repo.file)
             .open("Wrong passwd".to_string())
+            .await
             .unwrap_err();
 
         assert!(matches!(result, RepositoryOpenError::WrongPassword));
         tmp_dir.close().unwrap();
     }
 
-    #[test]
-    fn test_repository_open_missed_file() {
+    #[tokio::test]
+    async fn test_repository_open_missed_file() {
         let tmp_dir = TempDir::new().unwrap();
         let result = OpenRecordsFileRepository(tmp_dir.path().join("any_file"))
             .open("Wrong passwd".to_string())
+            .await
             .unwrap_err();
 
         assert!(matches!(result, RepositoryOpenError::DoesntExist));
         tmp_dir.close().unwrap();
     }
 
-    #[test]
-    fn test_repository_dump() {
+    #[tokio::test]
+    async fn test_repository_dump() {
         let tmp_dir = TempDir::new().unwrap();
         let pass = "One password".to_string();
 
         let mut repo = RecordsFileRepository::new(tmp_dir.path().join("repo_file"), pass);
-        repo.save().unwrap();
+        repo.save().await.unwrap();
 
-        let dump_res = repo.dump().unwrap();
+        let dump_res = repo.dump().await.unwrap();
         assert!(!dump_res.is_empty());
 
         tmp_dir.close().unwrap();
     }
 
-    #[test]
-    fn test_repository_load_dumped() {
+    #[tokio::test]
+    async fn test_repository_load_dumped() {
         let tmp_dir = TempDir::new().unwrap();
         let pass = "One password".to_string();
 
@@ -376,16 +463,18 @@ mod tests {
             (String::from("Login"), String::from("1")),
             (String::from("Password"), String::from("2")),
         ]))
+        .await
         .unwrap();
         repo.add_record(Record::new(vec![
             (String::from("Login"), String::from("3")),
             (String::from("Password"), String::from("4")),
         ]))
+        .await
         .unwrap();
 
-        repo.save().unwrap();
+        repo.save().await.unwrap();
 
-        let dump_res = repo.dump().unwrap();
+        let dump_res = repo.dump().await.unwrap();
 
         let loaded_repo_path = tmp_dir.path().join("repo_file_loads");
         File::create(&loaded_repo_path)
@@ -395,15 +484,43 @@ mod tests {
 
         let loaded_repo = OpenRecordsFileRepository(loaded_repo_path)
             .open(pass)
+            .await
             .unwrap();
 
-        let mut expected_records = repo.get_records().unwrap();
-        let mut real_records = loaded_repo.get_records().unwrap();
+        let mut expected_records = repo.get_records().await.unwrap();
+        let mut real_records = loaded_repo.get_records().await.unwrap();
 
         expected_records.sort_by(|a, b| a.id.cmp(&b.id));
         real_records.sort_by(|a, b| a.id.cmp(&b.id));
 
         assert_eq!(expected_records, real_records);
+
+        tmp_dir.close().unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_named_repositories_create_repository_is_atomic() {
+        let tmp_dir = TempDir::new().unwrap();
+        let repositories = NamedFileRepositories::new(tmp_dir.path().to_path_buf());
+
+        let first = repositories
+            .create_repository("demo", "One password".to_string())
+            .await
+            .unwrap();
+        let second = repositories
+            .create_repository("demo", "Another password".to_string())
+            .await;
+
+        assert!(matches!(
+            second,
+            Err(crate::repository::CreateRepositoryError::RepositoryAlreadyExists)
+        ));
+
+        let reopened = OpenRecordsFileRepository(first.file.clone())
+            .open("One password".to_string())
+            .await
+            .unwrap();
+        assert_eq!(reopened.identifier, first.identifier);
 
         tmp_dir.close().unwrap();
     }

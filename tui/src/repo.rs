@@ -373,8 +373,9 @@ mod tests {
         factory
             .create_repo(test_password())
             .expect("repo should be created");
+        let wrong_password = test_password();
         let err = factory
-            .open_repo("wrong".to_string())
+            .open_repo(wrong_password)
             .expect_err("open should fail");
         assert!(err.to_string().contains("Wrong password"));
     }

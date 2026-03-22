@@ -234,7 +234,9 @@ fn install_crypto_provider() {
 #[cfg(test)]
 pub(crate) mod test_support {
     use std::net::TcpListener;
+    use std::path::Path;
     use std::time::Duration;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     use rcgen::{
         BasicConstraints, CertificateParams, CertifiedIssuer, DistinguishedName, DnType, IsCa,
@@ -250,9 +252,21 @@ pub(crate) mod test_support {
 
     pub(crate) struct TestServer {
         pub(crate) base_url: String,
-        client_identity_path: PathBuf,
-        ca_cert_path: PathBuf,
         _tmp: TempDir,
+    }
+
+    impl TestServer {
+        fn certs_dir(&self) -> &Path {
+            self._tmp.path()
+        }
+    }
+
+    pub(crate) fn test_password() -> String {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock must be after unix epoch")
+            .as_nanos();
+        format!("server-test-password-{}-{nanos}", std::process::id())
     }
 
     pub(crate) async fn create_repo(
@@ -318,8 +332,6 @@ pub(crate) mod test_support {
 
         Ok(TestServer {
             base_url: format!("https://{}", addr),
-            client_identity_path: certs.client_identity_path,
-            ca_cert_path: certs.ca_cert_path,
             _tmp: tmp,
         })
     }
@@ -330,13 +342,9 @@ pub(crate) mod test_support {
     ) -> Result<reqwest::Client> {
         install_crypto_provider();
         let identity_path = if trusted {
-            server.client_identity_path.clone()
+            server.certs_dir().join("client-identity.pem")
         } else {
-            let untrusted = server
-                .client_identity_path
-                .parent()
-                .unwrap()
-                .join("untrusted-client.pem");
+            let untrusted = server.certs_dir().join("untrusted-client.pem");
             TestCertificates::write_untrusted_client(&untrusted)?;
             untrusted
         };
@@ -348,7 +356,7 @@ pub(crate) mod test_support {
         )
         .context("parse client identity")?;
         let ca_cert = Certificate::from_pem(
-            &tokio::fs::read(&server.ca_cert_path)
+            &tokio::fs::read(server.certs_dir().join("ca.pem"))
                 .await
                 .context("read ca cert")?,
         )
@@ -367,7 +375,6 @@ pub(crate) mod test_support {
         ca_cert_path: PathBuf,
         server_cert_path: PathBuf,
         server_key_path: PathBuf,
-        client_identity_path: PathBuf,
     }
 
     impl TestCertificates {
@@ -410,7 +417,6 @@ pub(crate) mod test_support {
                 ca_cert_path,
                 server_cert_path,
                 server_key_path,
-                client_identity_path,
             })
         }
 

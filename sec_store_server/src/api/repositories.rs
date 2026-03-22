@@ -61,17 +61,18 @@ mod tests {
         AddRecordRequest, CreateRepositoryRequest, OpenRepositoryRequest, OpenRepositoryResponse,
     };
 
-    use crate::test_support::{build_client, spawn_test_server};
+    use crate::test_support::{build_client, spawn_test_server, test_password};
 
     #[tokio::test]
     async fn mtls_server_rejects_unknown_client_and_persists_records() {
         let server = spawn_test_server().await.expect("server");
         let allowed_client = build_client(&server, true).await.expect("allowed client");
+        let password = test_password();
 
         let create_response = allowed_client
             .post(format!("{}/repositories/demo", server.base_url))
             .json(&CreateRepositoryRequest {
-                password: "secret".to_string(),
+                password: password.clone(),
             })
             .send()
             .await
@@ -81,7 +82,7 @@ mod tests {
         let session = allowed_client
             .post(format!("{}/repositories/demo/sessions", server.base_url))
             .json(&OpenRepositoryRequest {
-                password: "secret".to_string(),
+                password: password.clone(),
             })
             .send()
             .await
@@ -112,9 +113,7 @@ mod tests {
 
         let second_session = allowed_client
             .post(format!("{}/repositories/demo/sessions", server.base_url))
-            .json(&OpenRepositoryRequest {
-                password: "secret".to_string(),
-            })
+            .json(&OpenRepositoryRequest { password })
             .send()
             .await
             .expect("second open response")
@@ -146,11 +145,12 @@ mod tests {
     async fn invalid_repository_names_return_bad_request() {
         let server = spawn_test_server().await.expect("server");
         let client = build_client(&server, true).await.expect("client");
+        let password = test_password();
 
         let create_response = client
             .post(format!("{}/repositories/invalid%3Aname", server.base_url))
             .json(&CreateRepositoryRequest {
-                password: "secret".to_string(),
+                password: password.clone(),
             })
             .send()
             .await
@@ -162,9 +162,7 @@ mod tests {
                 "{}/repositories/invalid%3Aname/sessions",
                 server.base_url
             ))
-            .json(&OpenRepositoryRequest {
-                password: "secret".to_string(),
-            })
+            .json(&OpenRepositoryRequest { password })
             .send()
             .await
             .expect("open response");

@@ -200,15 +200,18 @@ mod tests {
     use sec_store::repository::{OpenRepository, RecordsRepository};
     use tempfile::TempDir;
 
-    use crate::test_support::{build_client, create_repo, open_session, spawn_test_server};
+    use crate::test_support::{
+        build_client, create_repo, open_session, spawn_test_server, test_password,
+    };
 
     #[tokio::test]
     async fn export_uses_unsaved_session_state() {
         let server = spawn_test_server().await.expect("server");
         let client = build_client(&server, true).await.expect("client");
+        let password = test_password();
 
-        create_repo(&client, &server, "demo", "secret").await;
-        let session = open_session(&client, &server, "demo", "secret").await;
+        create_repo(&client, &server, "demo", &password).await;
+        let session = open_session(&client, &server, "demo", &password).await;
 
         let record = Record::new(vec![("name".to_string(), "draft".to_string())]);
         let add_response = client
@@ -235,7 +238,7 @@ mod tests {
         let dump_path = temp_dir.path().join("repo.json");
         std::fs::write(&dump_path, dump).expect("write dump");
         let dumped_repo = OpenRecordsFileRepository(dump_path)
-            .open("secret".to_string())
+            .open(password)
             .await
             .expect("open dumped repo");
         let records = dumped_repo.get_records().await.expect("records");
@@ -246,10 +249,11 @@ mod tests {
     async fn concurrent_save_returns_conflict_instead_of_overwriting() {
         let server = spawn_test_server().await.expect("server");
         let client = build_client(&server, true).await.expect("client");
+        let password = test_password();
 
-        create_repo(&client, &server, "demo", "secret").await;
-        let first = open_session(&client, &server, "demo", "secret").await;
-        let second = open_session(&client, &server, "demo", "secret").await;
+        create_repo(&client, &server, "demo", &password).await;
+        let first = open_session(&client, &server, "demo", &password).await;
+        let second = open_session(&client, &server, "demo", &password).await;
 
         let first_record = Record::new(vec![("name".to_string(), "first".to_string())]);
         let second_record = Record::new(vec![("name".to_string(), "second".to_string())]);
@@ -292,7 +296,7 @@ mod tests {
             .expect("second save");
         assert_eq!(second_save.status(), StatusCode::CONFLICT);
 
-        let verify = open_session(&client, &server, "demo", "secret").await;
+        let verify = open_session(&client, &server, "demo", &password).await;
         let records = client
             .get(format!("{}/session/records", server.base_url))
             .bearer_auth(&verify.session_id)

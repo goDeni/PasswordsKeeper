@@ -89,9 +89,10 @@ mod tests {
         factory
             .create_repo(test_password())
             .expect("repo creation failed");
+        let wrong_password = test_password();
 
         let mut dialogue = OpenRepoDialogue::new(factory);
-        let res = dialogue.on_input_submit("wrong".to_string());
+        let res = dialogue.on_input_submit(wrong_password);
 
         match res {
             DialogueResult::StartInput { prompt, password } => {

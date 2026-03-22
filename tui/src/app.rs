@@ -212,6 +212,7 @@ impl App {
         }
 
         if k.code == KeyCode::Char('q') {
+            self.screen.on_exit();
             self.exit = true;
         } else {
             let result = self.screen.handle_key(k);

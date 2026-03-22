@@ -8,27 +8,27 @@ use ratatui::{
 };
 
 use ratatui::symbols::border;
-use sec_store::repository::file::RecordsFileRepository;
 use sec_store::repository::RecordsRepository;
 
 use crate::dialogues::{Dialogue, DialogueResult};
 use crate::fields::{
     RECORD_DESCR_FIELD, RECORD_LOGIN_FIELD, RECORD_NAME_FIELD, RECORD_PASSWD_FIELD,
 };
+use crate::repo::TuiRepository;
 use crate::runtime::block_on;
 
 type RecordId = String;
 
 #[derive(Debug)]
 pub struct ViewRecordDialogue {
-    repo: RecordsFileRepository,
+    repo: TuiRepository,
     record_id: RecordId,
     confirm_delete: bool,
     password_visible: bool,
 }
 
 impl ViewRecordDialogue {
-    pub fn new(repo: RecordsFileRepository, record_id: RecordId, confirm_delete: bool) -> Self {
+    pub fn new(repo: TuiRepository, record_id: RecordId, confirm_delete: bool) -> Self {
         Self {
             repo,
             record_id,
@@ -236,6 +236,10 @@ impl Dialogue for ViewRecordDialogue {
     fn on_input_cancel(&mut self) -> DialogueResult {
         DialogueResult::NoOp
     }
+
+    fn on_exit(&mut self) {
+        let _ = block_on(self.repo.close_connection());
+    }
 }
 
 #[cfg(test)]
@@ -245,6 +249,7 @@ mod tests {
 
     use crate::dialogues::{Dialogue, DialogueResult};
     use crate::fields::{RECORD_NAME_FIELD, RECORD_PASSWD_FIELD};
+    use crate::repo::TuiRepository;
     use crate::runtime::block_on;
     use crate::test_helpers::test_password;
     use sec_store::record::Record;
@@ -261,7 +266,7 @@ mod tests {
         KeyEvent::new(KeyCode::Char('v'), KeyModifiers::CONTROL)
     }
 
-    fn make_repo_with_password_record() -> (TempDir, RecordsFileRepository, String, String) {
+    fn make_repo_with_password_record() -> (TempDir, TuiRepository, String, String) {
         let tmp = TempDir::new().expect("temp dir");
         let path = tmp.path().join("repo");
         let repo_password = test_password();
@@ -273,10 +278,10 @@ mod tests {
         let id = rec.id.clone();
         block_on(repo.add_record(rec)).expect("add");
         block_on(repo.save()).expect("save");
-        (tmp, repo, id, repo_password)
+        (tmp, TuiRepository::File(repo), id, repo_password)
     }
 
-    fn make_repo_without_password_record() -> (TempDir, RecordsFileRepository, String) {
+    fn make_repo_without_password_record() -> (TempDir, TuiRepository, String) {
         let tmp = TempDir::new().expect("temp dir");
         let path = tmp.path().join("repo");
         let mut repo = RecordsFileRepository::new(path, test_password());
@@ -284,7 +289,7 @@ mod tests {
         let id = rec.id.clone();
         block_on(repo.add_record(rec)).expect("add");
         block_on(repo.save()).expect("save");
-        (tmp, repo, id)
+        (tmp, TuiRepository::File(repo), id)
     }
 
     #[test]
@@ -336,8 +341,8 @@ mod tests {
         let res = dialogue.handle_key(key(KeyCode::Char('y')));
         assert!(matches!(res, DialogueResult::ChangeScreen(_)));
 
-        let mut repo_after = OpenRecordsFileRepository(tmp.path().join("repo")).open(repo_password);
-        let mut repo_after = block_on(repo_after).expect("open repo");
+        let repo_after = OpenRecordsFileRepository(tmp.path().join("repo")).open(repo_password);
+        let repo_after = block_on(repo_after).expect("open repo");
         let found = block_on(repo_after.get(&id)).expect("get");
         assert!(found.is_none());
     }
@@ -365,7 +370,8 @@ mod tests {
         let mut repo = RecordsFileRepository::new(path, test_password());
         block_on(repo.save()).expect("save");
 
-        let mut dialogue = ViewRecordDialogue::new(repo, "missing-id".to_string(), false);
+        let mut dialogue =
+            ViewRecordDialogue::new(TuiRepository::File(repo), "missing-id".to_string(), false);
         let res = dialogue.handle_key(key(KeyCode::Char('c')));
         match res {
             DialogueResult::Error(msg) => assert_eq!(msg, "Record not found"),

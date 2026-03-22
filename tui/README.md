@@ -10,16 +10,36 @@ cargo run -p tui
 just run-tui
 # or
 cargo run -p tui -- --repo-file /path/to/custom-repo
+# or
+cargo run -p tui -- --connection remote --remote-config /path/to/remote-repo.toml
 ```
 
-## Repository file
+## Repository connection
 
-- Default: `./passwords_keeper_tui_data/repo` (relative to current working directory)
-- Override: pass `--repo-file /path/to/repo-file`
+- File mode is the default.
+- In file mode:
+  - Default repository file: `./passwords_keeper_tui_data/repo` (relative to current working directory)
+  - Override with `--repo-file /path/to/repo-file`
+- In remote mode:
+  - Pass `--connection remote --remote-config /path/to/remote-repo.toml`
+  - The TOML file defines the HTTPS server, client certificate files, and the remote repository name
+
+Example `remote-repo.toml`:
+
+```toml
+base_url = "https://127.0.0.1:8443"
+client_identity_pem_path = "client-identity.pem"
+ca_cert_pem_path = "ca.pem"
+repository_name = "demo"
+```
+
+Relative certificate paths are resolved relative to the TOML file location.
 
 ## CLI parameters
 
-- `--repo-file <PATH>`: Use `PATH` as the repository file.
+- `--connection <file|remote>`: Choose whether the TUI opens a local repository file or connects through the server.
+- `--repo-file <PATH>`: Use `PATH` as the repository file when `--connection=file`.
+- `--remote-config <PATH>`: Load remote connection settings from a TOML file when `--connection=remote`.
 
 ## Requirements
 

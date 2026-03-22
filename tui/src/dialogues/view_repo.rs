@@ -8,25 +8,25 @@ use ratatui::{
     widgets::{Block, List, ListItem, ListState, Paragraph},
     Frame,
 };
-use sec_store::repository::file::RecordsFileRepository;
 use sec_store::repository::RecordsRepository;
 
 use crate::dialogues::{Dialogue, DialogueResult};
 use crate::fields::{RECORD_LOGIN_FIELD, RECORD_NAME_FIELD};
+use crate::repo::TuiRepository;
 use crate::runtime::block_on;
 
 type RecordId = String;
 
 #[derive(Debug)]
 pub struct ViewRepoDialogue {
-    repo: RecordsFileRepository,
+    repo: TuiRepository,
     list_state: ListState,
     search_query: String,
     is_searching: bool,
 }
 
 impl ViewRepoDialogue {
-    pub fn new(repo: RecordsFileRepository, selected: Option<usize>) -> Self {
+    pub fn new(repo: TuiRepository, selected: Option<usize>) -> Self {
         let mut state = ListState::default();
         state.select(selected);
         Self {
@@ -212,9 +212,12 @@ impl Dialogue for ViewRepoDialogue {
                 prompt: "Enter password".to_string(),
                 password: true,
             },
-            KeyCode::Char('c') if !self.is_searching => DialogueResult::ChangeScreen(Box::new(
-                crate::dialogues::welcome::WelcomeDialogue::new(Some(0)),
-            )),
+            KeyCode::Char('c') if !self.is_searching => {
+                let _ = block_on(self.repo.close_connection());
+                DialogueResult::ChangeScreen(Box::new(
+                    crate::dialogues::welcome::WelcomeDialogue::new(Some(0)),
+                ))
+            }
             KeyCode::Enter => {
                 if sel < n_rec {
                     let rid = rows[sel].0.clone();
@@ -230,6 +233,7 @@ impl Dialogue for ViewRepoDialogue {
                         password: true,
                     }
                 } else {
+                    let _ = block_on(self.repo.close_connection());
                     DialogueResult::ChangeScreen(Box::new(WelcomeDialogue::new(Some(0))))
                 }
             }
@@ -244,6 +248,10 @@ impl Dialogue for ViewRepoDialogue {
     fn on_input_cancel(&mut self) -> DialogueResult {
         DialogueResult::NoOp
     }
+
+    fn on_exit(&mut self) {
+        let _ = block_on(self.repo.close_connection());
+    }
 }
 
 #[cfg(test)]
@@ -253,6 +261,7 @@ mod tests {
 
     use crate::dialogues::{Dialogue, DialogueResult};
     use crate::fields::{RECORD_LOGIN_FIELD, RECORD_NAME_FIELD, RECORD_PASSWD_FIELD};
+    use crate::repo::TuiRepository;
     use crate::runtime::block_on;
     use crate::test_helpers::test_password;
     use sec_store::record::Record;
@@ -265,7 +274,7 @@ mod tests {
         KeyEvent::new(code, KeyModifiers::NONE)
     }
 
-    fn repo_with_records() -> (TempDir, RecordsFileRepository) {
+    fn repo_with_records() -> (TempDir, TuiRepository) {
         let tmp = TempDir::new().expect("temp dir");
         let path = tmp.path().join("repo");
         let mut repo = RecordsFileRepository::new(path, test_password());
@@ -287,7 +296,7 @@ mod tests {
         block_on(repo.add_record(rec1)).expect("add rec1");
         block_on(repo.add_record(rec2)).expect("add rec2");
         block_on(repo.save()).expect("save repo");
-        (tmp, repo)
+        (tmp, TuiRepository::File(repo))
     }
 
     #[test]

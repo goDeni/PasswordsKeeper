@@ -1,19 +1,19 @@
 use ratatui::symbols::border;
 use ratatui::{layout::Rect, widgets::Block, Frame};
-use sec_store::repository::file::RecordsFileRepository;
 
 use crate::dialogues::{Dialogue, DialogueResult};
 use crate::record_fields::RecordFields;
+use crate::repo::TuiRepository;
 use crate::runtime::block_on;
 
 #[derive(Debug)]
 pub struct AddRecordDialogue {
-    repo: RecordsFileRepository,
+    repo: TuiRepository,
     record_fields: RecordFields,
 }
 
 impl AddRecordDialogue {
-    pub fn new(repo: RecordsFileRepository) -> Self {
+    pub fn new(repo: TuiRepository) -> Self {
         Self {
             repo,
             record_fields: RecordFields::new(),
@@ -114,6 +114,10 @@ impl Dialogue for AddRecordDialogue {
             crate::dialogues::view_repo::ViewRepoDialogue::new(repo, Some(0)),
         ))
     }
+
+    fn on_exit(&mut self) {
+        let _ = block_on(self.repo.close_connection());
+    }
 }
 
 #[cfg(test)]
@@ -122,6 +126,7 @@ mod tests {
 
     use crate::dialogues::{Dialogue, DialogueResult};
     use crate::fields::RECORD_LOGIN_FIELD;
+    use crate::repo::TuiRepository;
     use crate::runtime::block_on;
     use crate::test_helpers::test_password;
     use sec_store::repository::file::{OpenRecordsFileRepository, RecordsFileRepository};
@@ -129,13 +134,13 @@ mod tests {
 
     use super::AddRecordDialogue;
 
-    fn make_repo() -> (TempDir, RecordsFileRepository, String) {
+    fn make_repo() -> (TempDir, TuiRepository, String) {
         let tmp = TempDir::new().expect("temp dir");
         let path = tmp.path().join("repo");
         let repo_password = test_password();
         let mut repo = RecordsFileRepository::new(path, repo_password.clone());
         block_on(repo.save()).expect("save repo");
-        (tmp, repo, repo_password)
+        (tmp, TuiRepository::File(repo), repo_password)
     }
 
     #[test]

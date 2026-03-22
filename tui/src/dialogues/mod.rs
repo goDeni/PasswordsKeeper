@@ -15,6 +15,7 @@ pub trait Dialogue: std::fmt::Debug {
     fn handle_key(&mut self, k: crossterm::event::KeyEvent) -> DialogueResult;
     fn on_input_submit(&mut self, value: String) -> DialogueResult;
     fn on_input_cancel(&mut self) -> DialogueResult;
+    fn on_exit(&mut self) {}
 }
 
 #[derive(Debug)]

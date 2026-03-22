@@ -162,7 +162,7 @@ async fn save_session(
         .map_err(ApiError::internal)?;
     session.persisted_snapshot = session
         .repository
-        .dump()
+        .persisted_dump()
         .await
         .map_err(ApiError::internal)?;
     Ok(Json(SimpleStatus::new("saved")))
@@ -323,5 +323,31 @@ mod tests {
             .await
             .expect("records json");
         assert_eq!(records, vec![first_record]);
+    }
+
+    #[tokio::test]
+    async fn repeated_save_in_same_session_does_not_conflict() {
+        let server = spawn_test_server().await.expect("server");
+        let client = build_client(&server, true).await.expect("client");
+        let password = test_password();
+
+        create_repo(&client, &server, "demo", &password).await;
+        let session = open_session(&client, &server, "demo", &password).await;
+
+        let first_save = client
+            .post(format!("{}/session/save", server.base_url))
+            .bearer_auth(&session.session_id)
+            .send()
+            .await
+            .expect("first save");
+        assert_eq!(first_save.status(), StatusCode::OK);
+
+        let second_save = client
+            .post(format!("{}/session/save", server.base_url))
+            .bearer_auth(&session.session_id)
+            .send()
+            .await
+            .expect("second save");
+        assert_eq!(second_save.status(), StatusCode::OK);
     }
 }

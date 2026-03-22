@@ -22,6 +22,7 @@ pub struct ViewRepoDialogue<F, R> {
     list_state: ListState,
     search_query: String,
     is_searching: bool,
+    records_error: Option<String>,
 }
 
 impl<F, R> ViewRepoDialogue<F, R>
@@ -37,11 +38,21 @@ where
             list_state: state,
             search_query: String::new(),
             is_searching: false,
+            records_error: None,
         }
     }
 
-    fn get_filtered_records(&self) -> Vec<(RecordId, String)> {
-        let records = repo::get_records(&self.repo).unwrap_or_default();
+    fn get_filtered_records(&mut self) -> Vec<(RecordId, String)> {
+        let records = match repo::get_records(&self.repo) {
+            Ok(records) => {
+                self.records_error = None;
+                records
+            }
+            Err(err) => {
+                self.records_error = Some(err.to_string());
+                return Vec::new();
+            }
+        };
         // Collect records with both name and login for filtering
         let mut rows: Vec<(RecordId, String, Option<String>)> = records
             .iter()
@@ -87,6 +98,15 @@ where
         frame.render_widget(block, area);
 
         let rows = self.get_filtered_records();
+
+        if let Some(error) = &self.records_error {
+            frame.render_widget(
+                Paragraph::new(format!("Failed to load records: {error}"))
+                    .style(Style::new().red()),
+                inner,
+            );
+            return;
+        }
 
         let mut items: Vec<ListItem> = rows
             .iter()
@@ -194,6 +214,9 @@ where
         }
 
         let rows = self.get_filtered_records();
+        if let Some(error) = self.records_error.clone() {
+            return DialogueResult::Error(format!("Failed to load records: {error}"));
+        }
         let n_rec = rows.len();
         let n = n_rec + 2; // Add, Close
         let sel = self
@@ -271,12 +294,16 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::fmt;
+
+    use anyhow::anyhow;
+    use async_trait::async_trait;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use tempfile::TempDir;
 
     use crate::dialogues::{Dialogue, DialogueResult};
     use crate::fields::{RECORD_LOGIN_FIELD, RECORD_NAME_FIELD, RECORD_PASSWD_FIELD};
-    use crate::repo::FileRepositoryFactory;
+    use crate::repo::{FileRepositoryFactory, RepositoryFactory};
     use crate::test_helpers::test_password;
     use sec_store::record::Record;
     use sec_store::repository::file::RecordsFileRepository;
@@ -312,6 +339,73 @@ mod tests {
         crate::runtime::block_on(repo.save()).expect("save repo");
         let factory = FileRepositoryFactory::new(tmp.path().join("repo"));
         (tmp, factory, repo)
+    }
+
+    #[derive(Clone)]
+    struct FailingRepo;
+
+    #[derive(Clone)]
+    struct FailingRepoFactory;
+
+    impl fmt::Debug for FailingRepoFactory {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("FailingRepoFactory")
+        }
+    }
+
+    impl RepositoryFactory<FailingRepo> for FailingRepoFactory {
+        fn has_repo(&self) -> bool {
+            true
+        }
+
+        fn create_repo(&self, _password: String) -> anyhow::Result<FailingRepo> {
+            Ok(FailingRepo)
+        }
+
+        fn open_repo(&self, _password: String) -> anyhow::Result<FailingRepo> {
+            Ok(FailingRepo)
+        }
+    }
+
+    impl fmt::Debug for FailingRepo {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("FailingRepo")
+        }
+    }
+
+    #[async_trait]
+    impl RecordsRepository for FailingRepo {
+        async fn cancel(&mut self) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn save(&mut self) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn get_records(&self) -> anyhow::Result<Vec<Record>> {
+            Err(anyhow!("session expired"))
+        }
+
+        async fn get(&self, _record_id: &String) -> anyhow::Result<Option<Record>> {
+            Ok(None)
+        }
+
+        async fn update(&mut self, _record: Record) -> sec_store::repository::UpdateResult<()> {
+            Ok(())
+        }
+
+        async fn delete(&mut self, _record_id: &String) -> sec_store::repository::UpdateResult<()> {
+            Ok(())
+        }
+
+        async fn add_record(&mut self, _record: Record) -> sec_store::repository::AddResult<()> {
+            Ok(())
+        }
+
+        async fn dump(&self) -> anyhow::Result<Vec<u8>> {
+            Ok(Vec::new())
+        }
     }
 
     #[test]
@@ -465,6 +559,21 @@ mod tests {
                 assert!(password);
             }
             _ => panic!("expected ChangeScreenAndStartInput"),
+        }
+    }
+
+    #[test]
+    fn test_record_load_error_is_surfaced() {
+        let mut dialogue = ViewRepoDialogue::new(FailingRepoFactory, FailingRepo, Some(0));
+
+        let result = dialogue.handle_key(key(KeyCode::Enter));
+
+        match result {
+            DialogueResult::Error(message) => {
+                assert!(message.contains("Failed to load records"));
+                assert!(message.contains("session expired"));
+            }
+            _ => panic!("expected error"),
         }
     }
 }

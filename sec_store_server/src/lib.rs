@@ -142,6 +142,13 @@ impl ApiError {
         }
     }
 
+    fn unauthorized(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::UNAUTHORIZED,
+            message: message.into(),
+        }
+    }
+
     fn conflict(message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::CONFLICT,
@@ -150,9 +157,10 @@ impl ApiError {
     }
 
     fn internal(error: impl std::fmt::Display) -> Self {
+        tracing::error!("internal API error: {error}");
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
-            message: error.to_string(),
+            message: "Internal server error".into(),
         }
     }
 

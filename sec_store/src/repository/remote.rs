@@ -1,8 +1,9 @@
 use std::path::Path;
+use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use reqwest::{Client, StatusCode};
+use reqwest::{Client, RequestBuilder, StatusCode};
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -91,6 +92,7 @@ impl RemoteRepositoriesClient {
             )
             .use_rustls_tls()
             .https_only(true)
+            .timeout(Duration::from_secs(30))
             .build()
             .context("Failed to create HTTPS client")?;
 
@@ -119,7 +121,8 @@ impl RemoteRepositoriesClient {
     pub async fn close_session(&self, session_id: &str) -> Result<()> {
         let response = self
             .client
-            .delete(self.url(&format!("/sessions/{session_id}")))
+            .delete(self.url("/session"))
+            .bearer_auth(session_id)
             .send()
             .await
             .context("Failed to close remote repository session")?;
@@ -150,6 +153,12 @@ impl RemoteRecordsRepository {
 
     fn url(&self, path: &str) -> String {
         format!("{}{}", self.base_url, path)
+    }
+
+    fn request(&self, method: reqwest::Method, path: &str) -> RequestBuilder {
+        self.client
+            .request(method, self.url(path))
+            .bearer_auth(&self.session_id)
     }
 }
 
@@ -218,25 +227,16 @@ impl RepositoriesSource<RemoteRecordsRepository> for RemoteRepositoriesClient {
 #[async_trait]
 impl RecordsRepository for RemoteRecordsRepository {
     async fn cancel(&mut self) -> Result<()> {
-        simple_post(
-            &self.client,
-            &self.url(&format!("/sessions/{}/cancel", self.session_id)),
-        )
-        .await
+        simple_post(self.request(reqwest::Method::POST, "/session/cancel")).await
     }
 
     async fn save(&mut self) -> Result<()> {
-        simple_post(
-            &self.client,
-            &self.url(&format!("/sessions/{}/save", self.session_id)),
-        )
-        .await
+        simple_post(self.request(reqwest::Method::POST, "/session/save")).await
     }
 
     async fn get_records(&self) -> Result<Vec<Record>> {
         let response = self
-            .client
-            .get(self.url(&format!("/sessions/{}/records", self.session_id)))
+            .request(reqwest::Method::GET, "/session/records")
             .send()
             .await
             .context("Failed to get remote records")?;
@@ -245,11 +245,10 @@ impl RecordsRepository for RemoteRecordsRepository {
 
     async fn get(&self, record_id: &RecordId) -> Result<Option<Record>> {
         let response = self
-            .client
-            .get(self.url(&format!(
-                "/sessions/{}/records/{record_id}",
-                self.session_id
-            )))
+            .request(
+                reqwest::Method::GET,
+                &format!("/session/records/{record_id}"),
+            )
             .send()
             .await
             .context("Failed to get remote record")?;
@@ -267,11 +266,10 @@ impl RecordsRepository for RemoteRecordsRepository {
 
     async fn update(&mut self, record: Record) -> UpdateResult<()> {
         let response = self
-            .client
-            .put(self.url(&format!(
-                "/sessions/{}/records/{}",
-                self.session_id, record.id
-            )))
+            .request(
+                reqwest::Method::PUT,
+                &format!("/session/records/{}", record.id),
+            )
             .json(&UpdateRecordRequest { record })
             .send()
             .await
@@ -281,11 +279,10 @@ impl RecordsRepository for RemoteRecordsRepository {
 
     async fn delete(&mut self, record_id: &RecordId) -> UpdateResult<()> {
         let response = self
-            .client
-            .delete(self.url(&format!(
-                "/sessions/{}/records/{record_id}",
-                self.session_id
-            )))
+            .request(
+                reqwest::Method::DELETE,
+                &format!("/session/records/{record_id}"),
+            )
             .send()
             .await
             .map_err(|err| UpdateRecordError::UnxpectedError(err.into()))?;
@@ -294,8 +291,7 @@ impl RecordsRepository for RemoteRecordsRepository {
 
     async fn add_record(&mut self, record: Record) -> AddResult<()> {
         let response = self
-            .client
-            .post(self.url(&format!("/sessions/{}/records", self.session_id)))
+            .request(reqwest::Method::POST, "/session/records")
             .json(&AddRecordRequest { record })
             .send()
             .await
@@ -311,8 +307,7 @@ impl RecordsRepository for RemoteRecordsRepository {
 
     async fn dump(&self) -> Result<Vec<u8>> {
         let response = self
-            .client
-            .get(self.url(&format!("/sessions/{}/export", self.session_id)))
+            .request(reqwest::Method::GET, "/session/export")
             .send()
             .await
             .context("Failed to export remote repository")?;
@@ -329,12 +324,11 @@ impl RecordsRepository for RemoteRecordsRepository {
     }
 }
 
-async fn simple_post(client: &Client, url: &str) -> Result<()> {
-    let response = client
-        .post(url)
+async fn simple_post(request: RequestBuilder) -> Result<()> {
+    let response = request
         .send()
         .await
-        .with_context(|| format!("Failed POST {url}"))?;
+        .context("Failed to send POST request")?;
 
     if response.status().is_success() {
         return Ok(());

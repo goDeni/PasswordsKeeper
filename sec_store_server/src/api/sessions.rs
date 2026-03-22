@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path as AxumPath, State},
-    http::{header, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{delete, get, post},
     Json, Router,
@@ -14,25 +14,43 @@ use crate::{ApiError, AppState};
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/sessions/{session_id}", delete(close_session))
+        .route("/session", delete(close_session))
+        .route("/session/records", get(list_records).post(add_record))
         .route(
-            "/sessions/{session_id}/records",
-            get(list_records).post(add_record),
-        )
-        .route(
-            "/sessions/{session_id}/records/{record_id}",
+            "/session/records/{record_id}",
             get(get_record).put(update_record).delete(delete_record),
         )
-        .route("/sessions/{session_id}/save", post(save_session))
-        .route("/sessions/{session_id}/cancel", post(cancel_session))
-        .route("/sessions/{session_id}/export", get(export_repository))
+        .route("/session/save", post(save_session))
+        .route("/session/cancel", post(cancel_session))
+        .route("/session/export", get(export_repository))
 }
 
-async fn close_session(
-    State(state): State<AppState>,
-    AxumPath(session_id): AxumPath<String>,
-) -> impl IntoResponse {
-    let removed = state.sessions.write().await.remove(&session_id);
+fn session_id_from_headers(headers: &HeaderMap) -> Result<&str, ApiError> {
+    let auth_header = headers
+        .get(header::AUTHORIZATION)
+        .ok_or_else(|| ApiError::unauthorized("Missing authorization header"))?;
+    let auth_header = auth_header
+        .to_str()
+        .map_err(|_| ApiError::unauthorized("Invalid authorization header"))?;
+    auth_header
+        .strip_prefix("Bearer ")
+        .filter(|session_id| !session_id.is_empty())
+        .ok_or_else(|| ApiError::unauthorized("Invalid bearer token"))
+}
+
+async fn authorized_session(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<tokio::sync::OwnedMutexGuard<crate::SessionState>, ApiError> {
+    let session = state.get_session(session_id_from_headers(headers)?).await?;
+    Ok(session.lock_owned().await)
+}
+
+async fn close_session(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
+    let Ok(session_id) = session_id_from_headers(&headers) else {
+        return StatusCode::UNAUTHORIZED;
+    };
+    let removed = state.sessions.write().await.remove(session_id);
     if removed.is_some() {
         StatusCode::NO_CONTENT
     } else {
@@ -42,10 +60,9 @@ async fn close_session(
 
 async fn list_records(
     State(state): State<AppState>,
-    AxumPath(session_id): AxumPath<String>,
+    headers: HeaderMap,
 ) -> Result<Json<Vec<Record>>, ApiError> {
-    let session = state.get_session(&session_id).await?;
-    let session = session.lock().await;
+    let session = authorized_session(&state, &headers).await?;
     Ok(Json(
         session
             .repository
@@ -57,10 +74,10 @@ async fn list_records(
 
 async fn get_record(
     State(state): State<AppState>,
-    AxumPath((session_id, record_id)): AxumPath<(String, String)>,
+    headers: HeaderMap,
+    AxumPath(record_id): AxumPath<String>,
 ) -> Result<Json<Record>, ApiError> {
-    let session = state.get_session(&session_id).await?;
-    let session = session.lock().await;
+    let session = authorized_session(&state, &headers).await?;
     let record = session
         .repository
         .get(&record_id)
@@ -72,11 +89,10 @@ async fn get_record(
 
 async fn add_record(
     State(state): State<AppState>,
-    AxumPath(session_id): AxumPath<String>,
+    headers: HeaderMap,
     Json(request): Json<AddRecordRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let session = state.get_session(&session_id).await?;
-    let mut session = session.lock().await;
+    let mut session = authorized_session(&state, &headers).await?;
     session
         .repository
         .add_record(request.record)
@@ -87,7 +103,8 @@ async fn add_record(
 
 async fn update_record(
     State(state): State<AppState>,
-    AxumPath((session_id, record_id)): AxumPath<(String, String)>,
+    headers: HeaderMap,
+    AxumPath(record_id): AxumPath<String>,
     Json(request): Json<UpdateRecordRequest>,
 ) -> Result<Json<SimpleStatus>, ApiError> {
     if request.record.id != record_id {
@@ -96,8 +113,7 @@ async fn update_record(
         ));
     }
 
-    let session = state.get_session(&session_id).await?;
-    let mut session = session.lock().await;
+    let mut session = authorized_session(&state, &headers).await?;
     session
         .repository
         .update(request.record)
@@ -108,10 +124,10 @@ async fn update_record(
 
 async fn delete_record(
     State(state): State<AppState>,
-    AxumPath((session_id, record_id)): AxumPath<(String, RecordId)>,
+    headers: HeaderMap,
+    AxumPath(record_id): AxumPath<RecordId>,
 ) -> Result<StatusCode, ApiError> {
-    let session = state.get_session(&session_id).await?;
-    let mut session = session.lock().await;
+    let mut session = authorized_session(&state, &headers).await?;
     session
         .repository
         .delete(&record_id)
@@ -122,10 +138,9 @@ async fn delete_record(
 
 async fn save_session(
     State(state): State<AppState>,
-    AxumPath(session_id): AxumPath<String>,
+    headers: HeaderMap,
 ) -> Result<Json<SimpleStatus>, ApiError> {
-    let session = state.get_session(&session_id).await?;
-    let mut session = session.lock().await;
+    let mut session = authorized_session(&state, &headers).await?;
     let current_persisted = session
         .repository
         .persisted_dump()
@@ -151,10 +166,9 @@ async fn save_session(
 
 async fn cancel_session(
     State(state): State<AppState>,
-    AxumPath(session_id): AxumPath<String>,
+    headers: HeaderMap,
 ) -> Result<Json<SimpleStatus>, ApiError> {
-    let session = state.get_session(&session_id).await?;
-    let mut session = session.lock().await;
+    let mut session = authorized_session(&state, &headers).await?;
     session
         .repository
         .cancel()
@@ -165,10 +179,9 @@ async fn cancel_session(
 
 async fn export_repository(
     State(state): State<AppState>,
-    AxumPath(session_id): AxumPath<String>,
+    headers: HeaderMap,
 ) -> Result<impl IntoResponse, ApiError> {
-    let session = state.get_session(&session_id).await?;
-    let session = session.lock().await;
+    let session = authorized_session(&state, &headers).await?;
     let dump = session
         .repository
         .dump()
@@ -199,10 +212,8 @@ mod tests {
 
         let record = Record::new(vec![("name".to_string(), "draft".to_string())]);
         let add_response = client
-            .post(format!(
-                "{}/sessions/{}/records",
-                server.base_url, session.session_id
-            ))
+            .post(format!("{}/session/records", server.base_url))
+            .bearer_auth(&session.session_id)
             .json(&AddRecordRequest {
                 record: record.clone(),
             })
@@ -212,10 +223,8 @@ mod tests {
         assert_eq!(add_response.status(), StatusCode::CREATED);
 
         let export_response = client
-            .get(format!(
-                "{}/sessions/{}/export",
-                server.base_url, session.session_id
-            ))
+            .get(format!("{}/session/export", server.base_url))
+            .bearer_auth(&session.session_id)
             .send()
             .await
             .expect("export response");
@@ -246,10 +255,8 @@ mod tests {
         let second_record = Record::new(vec![("name".to_string(), "second".to_string())]);
 
         let first_add = client
-            .post(format!(
-                "{}/sessions/{}/records",
-                server.base_url, first.session_id
-            ))
+            .post(format!("{}/session/records", server.base_url))
+            .bearer_auth(&first.session_id)
             .json(&AddRecordRequest {
                 record: first_record.clone(),
             })
@@ -259,10 +266,8 @@ mod tests {
         assert_eq!(first_add.status(), StatusCode::CREATED);
 
         let second_add = client
-            .post(format!(
-                "{}/sessions/{}/records",
-                server.base_url, second.session_id
-            ))
+            .post(format!("{}/session/records", server.base_url))
+            .bearer_auth(&second.session_id)
             .json(&AddRecordRequest {
                 record: second_record,
             })
@@ -272,20 +277,16 @@ mod tests {
         assert_eq!(second_add.status(), StatusCode::CREATED);
 
         let first_save = client
-            .post(format!(
-                "{}/sessions/{}/save",
-                server.base_url, first.session_id
-            ))
+            .post(format!("{}/session/save", server.base_url))
+            .bearer_auth(&first.session_id)
             .send()
             .await
             .expect("first save");
         assert_eq!(first_save.status(), StatusCode::OK);
 
         let second_save = client
-            .post(format!(
-                "{}/sessions/{}/save",
-                server.base_url, second.session_id
-            ))
+            .post(format!("{}/session/save", server.base_url))
+            .bearer_auth(&second.session_id)
             .send()
             .await
             .expect("second save");
@@ -293,10 +294,8 @@ mod tests {
 
         let verify = open_session(&client, &server, "demo", "secret").await;
         let records = client
-            .get(format!(
-                "{}/sessions/{}/records",
-                server.base_url, verify.session_id
-            ))
+            .get(format!("{}/session/records", server.base_url))
+            .bearer_auth(&verify.session_id)
             .send()
             .await
             .expect("records response")

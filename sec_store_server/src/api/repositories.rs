@@ -92,10 +92,8 @@ mod tests {
 
         let record = Record::new(vec![("name".to_string(), "mail".to_string())]);
         let add_response = allowed_client
-            .post(format!(
-                "{}/sessions/{}/records",
-                server.base_url, session.session_id
-            ))
+            .post(format!("{}/session/records", server.base_url))
+            .bearer_auth(&session.session_id)
             .json(&AddRecordRequest {
                 record: record.clone(),
             })
@@ -105,10 +103,8 @@ mod tests {
         assert_eq!(add_response.status(), StatusCode::CREATED);
 
         let save_response = allowed_client
-            .post(format!(
-                "{}/sessions/{}/save",
-                server.base_url, session.session_id
-            ))
+            .post(format!("{}/session/save", server.base_url))
+            .bearer_auth(&session.session_id)
             .send()
             .await
             .expect("save response");
@@ -127,10 +123,8 @@ mod tests {
             .expect("second open json");
 
         let records = allowed_client
-            .get(format!(
-                "{}/sessions/{}/records",
-                server.base_url, second_session.session_id
-            ))
+            .get(format!("{}/session/records", server.base_url))
+            .bearer_auth(&second_session.session_id)
             .send()
             .await
             .expect("records response")
@@ -141,10 +135,8 @@ mod tests {
 
         let denied_client = build_client(&server, false).await.expect("denied client");
         let denied_result = denied_client
-            .get(format!(
-                "{}/sessions/{}/records",
-                server.base_url, second_session.session_id
-            ))
+            .get(format!("{}/session/records", server.base_url))
+            .bearer_auth(&second_session.session_id)
             .send()
             .await;
         assert!(denied_result.is_err());

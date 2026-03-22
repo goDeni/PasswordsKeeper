@@ -35,3 +35,15 @@ impl axum::response::IntoResponse for ApiError {
             .into_response()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn internal_errors_are_sanitized_in_responses() {
+        let error = ApiError::internal("leaked filesystem path");
+        assert_eq!(error.status, axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(error.message, "Internal server error");
+    }
+}

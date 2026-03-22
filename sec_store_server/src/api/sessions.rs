@@ -141,6 +141,10 @@ async fn save_session(
     headers: HeaderMap,
 ) -> Result<Json<SimpleStatus>, ApiError> {
     let mut session = authorized_session(&state, &headers).await?;
+    let repository_lock = state
+        .repository_lock(session.repository.identifier.as_str())
+        .await;
+    let _repository_lock = repository_lock.lock().await;
     let current_persisted = session
         .repository
         .persisted_dump()
@@ -280,21 +284,33 @@ mod tests {
             .expect("second add");
         assert_eq!(second_add.status(), StatusCode::CREATED);
 
-        let first_save = client
-            .post(format!("{}/session/save", server.base_url))
-            .bearer_auth(&first.session_id)
-            .send()
-            .await
-            .expect("first save");
-        assert_eq!(first_save.status(), StatusCode::OK);
-
-        let second_save = client
-            .post(format!("{}/session/save", server.base_url))
-            .bearer_auth(&second.session_id)
-            .send()
-            .await
-            .expect("second save");
-        assert_eq!(second_save.status(), StatusCode::CONFLICT);
+        let save_url = format!("{}/session/save", server.base_url);
+        let first_save_url = save_url.clone();
+        let second_save_url = save_url;
+        let first_client = client.clone();
+        let second_client = client.clone();
+        let first_request = async {
+            first_client
+                .post(first_save_url)
+                .bearer_auth(&first.session_id)
+                .send()
+                .await
+                .expect("first save")
+                .status()
+        };
+        let second_request = async {
+            second_client
+                .post(second_save_url)
+                .bearer_auth(&second.session_id)
+                .send()
+                .await
+                .expect("second save")
+                .status()
+        };
+        let (first_status, second_status) = tokio::join!(first_request, second_request);
+        let mut statuses = vec![first_status, second_status];
+        statuses.sort();
+        assert_eq!(statuses, vec![StatusCode::OK, StatusCode::CONFLICT]);
 
         let verify = open_session(&client, &server, "demo", &password).await;
         let records = client

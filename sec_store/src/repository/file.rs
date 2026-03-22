@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
@@ -27,7 +27,7 @@ impl From<String> for RepositoryId {
     }
 }
 impl RepositoryId {
-    fn as_str(&self) -> &str {
+    pub fn as_str(&self) -> &str {
         &self.0
     }
 }
@@ -79,6 +79,17 @@ impl RecordsFileRepository {
                 .collect::<Vec<EncryptedRecord>>(),
         ))
         .with_context(|| format!("Failed json dump serialization {:?}", self.file))
+    }
+
+    fn create_new_on_disk(&self) -> Result<()> {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&self.file)
+            .with_context(|| format!("Failed to create repository file {:?}", self.file))?;
+        file.write_all(&self.serialize_records(&self.records)?)?;
+        file.flush()?;
+        Ok(())
     }
 }
 
@@ -227,15 +238,20 @@ impl RepositoriesSource<RecordsFileRepository> for NamedFileRepositories {
         let path = self
             .repository_path(repository_name)
             .map_err(|err| CreateRepositoryError::InvalidRepositoryName(err.to_string()))?;
-        if path.exists() {
-            return Err(CreateRepositoryError::RepositoryAlreadyExists);
-        }
 
         let mut repository = RecordsFileRepository::new(path, passwd);
-        repository
-            .save()
-            .await
-            .map_err(CreateRepositoryError::UnexpectedError)?;
+        match repository.create_new_on_disk() {
+            Ok(()) => repository.saved_records = repository.records.clone(),
+            Err(err)
+                if err
+                    .root_cause()
+                    .downcast_ref::<std::io::Error>()
+                    .is_some_and(|io_err| io_err.kind() == std::io::ErrorKind::AlreadyExists) =>
+            {
+                return Err(CreateRepositoryError::RepositoryAlreadyExists);
+            }
+            Err(err) => return Err(CreateRepositoryError::UnexpectedError(err)),
+        }
         Ok(repository)
     }
 
@@ -261,13 +277,13 @@ mod tests {
         record::Record,
         repository::{
             file::{OpenRecordsFileRepository, RepositoryOpenError},
-            UpdateRecordError,
+            RepositoriesSource, UpdateRecordError,
         },
         repository::{OpenRepository, RecordsRepository},
     };
     use anyhow::Result;
 
-    use super::RecordsFileRepository;
+    use super::{NamedFileRepositories, RecordsFileRepository};
 
     #[tokio::test]
     async fn test_repository_add_record() -> Result<()> {
@@ -478,6 +494,33 @@ mod tests {
         real_records.sort_by(|a, b| a.id.cmp(&b.id));
 
         assert_eq!(expected_records, real_records);
+
+        tmp_dir.close().unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_named_repositories_create_repository_is_atomic() {
+        let tmp_dir = TempDir::new().unwrap();
+        let repositories = NamedFileRepositories::new(tmp_dir.path().to_path_buf());
+
+        let first = repositories
+            .create_repository("demo", "One password".to_string())
+            .await
+            .unwrap();
+        let second = repositories
+            .create_repository("demo", "Another password".to_string())
+            .await;
+
+        assert!(matches!(
+            second,
+            Err(crate::repository::CreateRepositoryError::RepositoryAlreadyExists)
+        ));
+
+        let reopened = OpenRecordsFileRepository(first.file.clone())
+            .open("One password".to_string())
+            .await
+            .unwrap();
+        assert_eq!(reopened.identifier, first.identifier);
 
         tmp_dir.close().unwrap();
     }

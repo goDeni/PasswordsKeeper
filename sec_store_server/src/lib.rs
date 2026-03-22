@@ -30,6 +30,7 @@ pub struct ServerConfigPaths {
 pub struct AppState {
     repositories: NamedFileRepositories,
     sessions: Arc<RwLock<HashMap<String, Arc<Mutex<SessionState>>>>>,
+    repository_locks: Arc<RwLock<HashMap<String, Arc<Mutex<()>>>>>,
 }
 
 #[derive(Debug)]
@@ -47,6 +48,7 @@ impl AppState {
         Ok(Self {
             repositories: NamedFileRepositories::new(data_dir),
             sessions: Arc::new(RwLock::new(HashMap::new())),
+            repository_locks: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
@@ -73,6 +75,24 @@ impl AppState {
             .get(session_id)
             .cloned()
             .ok_or_else(|| ApiError::not_found("Session does not exist"))
+    }
+
+    pub(crate) async fn repository_lock(&self, repository_id: &str) -> Arc<Mutex<()>> {
+        if let Some(lock) = self
+            .repository_locks
+            .read()
+            .await
+            .get(repository_id)
+            .cloned()
+        {
+            return lock;
+        }
+
+        let mut locks = self.repository_locks.write().await;
+        locks
+            .entry(repository_id.to_string())
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone()
     }
 }
 

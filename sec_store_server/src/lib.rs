@@ -233,15 +233,12 @@ fn install_crypto_provider() {
 
 #[cfg(test)]
 pub(crate) mod test_support {
+    use std::fs;
     use std::net::TcpListener;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use std::time::Duration;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use rcgen::{
-        BasicConstraints, CertificateParams, CertifiedIssuer, DistinguishedName, DnType, IsCa,
-        KeyPair, SanType,
-    };
     use reqwest::{Certificate, Identity};
     use sec_store::repository::remote::{
         CreateRepositoryRequest, OpenRepositoryRequest, OpenRepositoryResponse,
@@ -260,6 +257,8 @@ pub(crate) mod test_support {
             self._tmp.path()
         }
     }
+
+    const FIXTURE_CERTS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/certs");
 
     pub(crate) fn test_password() -> String {
         let nanos = SystemTime::now()
@@ -310,7 +309,7 @@ pub(crate) mod test_support {
 
     pub(crate) async fn spawn_test_server() -> Result<TestServer> {
         let tmp = TempDir::new().context("temp dir")?;
-        let certs = TestCertificates::generate(tmp.path())?;
+        TestCertificates::copy_fixtures(tmp.path())?;
 
         let listener = TcpListener::bind("127.0.0.1:0").context("bind listener")?;
         let addr = listener.local_addr().context("local addr")?;
@@ -319,9 +318,9 @@ pub(crate) mod test_support {
         let config = ServerConfigPaths {
             bind_addr: addr,
             data_dir: tmp.path().join("data"),
-            server_cert_pem: certs.server_cert_path.clone(),
-            server_key_pem: certs.server_key_path.clone(),
-            client_ca_cert_pem: certs.ca_cert_path.clone(),
+            server_cert_pem: tmp.path().join("server.pem"),
+            server_key_pem: tmp.path().join("server-key.pem"),
+            client_ca_cert_pem: tmp.path().join("ca.pem"),
         };
 
         tokio::spawn(async move {
@@ -372,93 +371,41 @@ pub(crate) mod test_support {
     }
 
     struct TestCertificates {
-        ca_cert_path: PathBuf,
-        server_cert_path: PathBuf,
-        server_key_path: PathBuf,
+        fixture_dir: PathBuf,
     }
 
     impl TestCertificates {
-        fn generate(base_dir: &Path) -> Result<Self> {
-            let mut ca_params = CertificateParams::new(Vec::<String>::new())?;
-            ca_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
-            ca_params.distinguished_name = DistinguishedName::new();
-            ca_params
-                .distinguished_name
-                .push(DnType::CommonName, "PasswordsKeeper Test CA");
-            let ca_key = KeyPair::generate()?;
-            let ca = CertifiedIssuer::self_signed(ca_params, ca_key)?;
+        fn fixture() -> Self {
+            Self {
+                fixture_dir: PathBuf::from(FIXTURE_CERTS_DIR),
+            }
+        }
 
-            let server = generate_signed_cert(
-                &ca,
-                "localhost",
-                vec![
-                    SanType::DnsName("localhost".try_into()?),
-                    SanType::IpAddress("127.0.0.1".parse()?),
-                ],
-            )?;
-            let client = generate_signed_cert(&ca, "allowed-client", Vec::new())?;
-
-            let ca_cert_path = base_dir.join("ca.pem");
-            let server_cert_path = base_dir.join("server.pem");
-            let server_key_path = base_dir.join("server-key.pem");
-            let client_identity_path = base_dir.join("client-identity.pem");
-
-            std::fs::write(&ca_cert_path, ca.pem()).context("write ca cert")?;
-            std::fs::write(&server_cert_path, server.cert.pem()).context("write server cert")?;
-            std::fs::write(&server_key_path, server.key_pair.serialize_pem())
-                .context("write server key")?;
-            std::fs::write(
-                &client_identity_path,
-                format!("{}{}", client.cert.pem(), client.key_pair.serialize_pem()),
-            )
-            .context("write client identity")?;
-
-            Ok(Self {
-                ca_cert_path,
-                server_cert_path,
-                server_key_path,
-            })
+        fn copy_fixtures(base_dir: &Path) -> Result<()> {
+            let fixtures = Self::fixture();
+            for file_name in [
+                "ca.pem",
+                "server.pem",
+                "server-key.pem",
+                "client-identity.pem",
+                "untrusted-client-identity.pem",
+            ] {
+                let source = fixtures.fixture_dir.join(file_name);
+                let target = base_dir.join(file_name);
+                fs::copy(&source, &target).with_context(|| {
+                    format!("copy {} to {}", source.display(), target.display())
+                })?;
+            }
+            Ok(())
         }
 
         fn write_untrusted_client(path: &Path) -> Result<()> {
-            let cert = generate_self_signed_cert("untrusted-client")?;
-            std::fs::write(
-                path,
-                format!("{}{}", cert.cert.pem(), cert.key_pair.serialize_pem()),
-            )
-            .with_context(|| format!("write {}", path.display()))
+            let source = Self::fixture()
+                .fixture_dir
+                .join("untrusted-client-identity.pem");
+            fs::copy(&source, path)
+                .with_context(|| format!("copy {} to {}", source.display(), path.display()))?;
+            Ok(())
         }
-    }
-
-    struct GeneratedCert {
-        cert: rcgen::Certificate,
-        key_pair: KeyPair,
-    }
-
-    fn generate_signed_cert(
-        issuer: &CertifiedIssuer<'_, KeyPair>,
-        common_name: &str,
-        subject_alt_names: Vec<SanType>,
-    ) -> Result<GeneratedCert> {
-        let mut params = CertificateParams::new(Vec::<String>::new())?;
-        params.subject_alt_names = subject_alt_names;
-        params.distinguished_name = DistinguishedName::new();
-        params
-            .distinguished_name
-            .push(DnType::CommonName, common_name);
-        let key_pair = KeyPair::generate()?;
-        let cert = params.signed_by(&key_pair, issuer)?;
-        Ok(GeneratedCert { cert, key_pair })
-    }
-
-    fn generate_self_signed_cert(common_name: &str) -> Result<GeneratedCert> {
-        let mut params = CertificateParams::new(Vec::<String>::new())?;
-        params.distinguished_name = DistinguishedName::new();
-        params
-            .distinguished_name
-            .push(DnType::CommonName, common_name);
-        let key_pair = KeyPair::generate()?;
-        let cert = params.self_signed(&key_pair)?;
-        Ok(GeneratedCert { cert, key_pair })
     }
 }

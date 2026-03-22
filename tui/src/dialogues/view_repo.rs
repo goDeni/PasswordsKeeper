@@ -1,4 +1,7 @@
 use crate::dialogues::{AddRecordDialogue, ViewRecordDialogue, WelcomeDialogue};
+use crate::dialogues::{Dialogue, DialogueResult};
+use crate::fields::{RECORD_LOGIN_FIELD, RECORD_NAME_FIELD};
+use crate::repo::{self, RepositoryFactory};
 use crossterm::event::KeyCode;
 use ratatui::symbols::border;
 use ratatui::{
@@ -10,26 +13,26 @@ use ratatui::{
 };
 use sec_store::repository::RecordsRepository;
 
-use crate::dialogues::{Dialogue, DialogueResult};
-use crate::fields::{RECORD_LOGIN_FIELD, RECORD_NAME_FIELD};
-use crate::repo::TuiRepository;
-use crate::runtime::block_on;
-
 type RecordId = String;
 
 #[derive(Debug)]
-pub struct ViewRepoDialogue {
-    repo: TuiRepository,
+pub struct ViewRepoDialogue<F, R> {
+    factory: F,
+    repo: R,
     list_state: ListState,
     search_query: String,
     is_searching: bool,
 }
 
-impl ViewRepoDialogue {
-    pub fn new(repo: TuiRepository, selected: Option<usize>) -> Self {
+impl<F, R> ViewRepoDialogue<F, R>
+where
+    R: RecordsRepository,
+{
+    pub fn new(factory: F, repo: R, selected: Option<usize>) -> Self {
         let mut state = ListState::default();
         state.select(selected);
         Self {
+            factory,
             repo,
             list_state: state,
             search_query: String::new(),
@@ -38,7 +41,7 @@ impl ViewRepoDialogue {
     }
 
     fn get_filtered_records(&self) -> Vec<(RecordId, String)> {
-        let records = block_on(self.repo.get_records()).unwrap_or_default();
+        let records = repo::get_records(&self.repo).unwrap_or_default();
         // Collect records with both name and login for filtering
         let mut rows: Vec<(RecordId, String, Option<String>)> = records
             .iter()
@@ -70,7 +73,11 @@ impl ViewRepoDialogue {
     }
 }
 
-impl Dialogue for ViewRepoDialogue {
+impl<F, R> Dialogue<F, R> for ViewRepoDialogue<F, R>
+where
+    F: RepositoryFactory<R>,
+    R: RecordsRepository,
+{
     fn draw(&mut self, frame: &mut Frame, area: Rect) {
         let block = Block::bordered()
             .title(" Repository ")
@@ -148,7 +155,7 @@ impl Dialogue for ViewRepoDialogue {
         );
     }
 
-    fn handle_key(&mut self, k: crossterm::event::KeyEvent) -> DialogueResult {
+    fn handle_key(&mut self, k: crossterm::event::KeyEvent) -> DialogueResult<F, R> {
         // Handle search mode input
         if self.is_searching {
             match k.code {
@@ -207,50 +214,58 @@ impl Dialogue for ViewRepoDialogue {
             }
             KeyCode::Char('a') if !self.is_searching => DialogueResult::ChangeScreenAndStartInput {
                 dialogue: Box::new(crate::dialogues::add_record::AddRecordDialogue::new(
+                    self.factory.clone(),
                     self.repo.clone(),
                 )),
                 prompt: "Enter password".to_string(),
                 password: true,
             },
             KeyCode::Char('c') if !self.is_searching => {
-                let _ = block_on(self.repo.close_connection());
+                let _ = repo::close_connection(&self.repo);
                 DialogueResult::ChangeScreen(Box::new(
-                    crate::dialogues::welcome::WelcomeDialogue::new(Some(0)),
+                    crate::dialogues::welcome::WelcomeDialogue::new(self.factory.clone(), Some(0)),
                 ))
             }
             KeyCode::Enter => {
                 if sel < n_rec {
                     let rid = rows[sel].0.clone();
                     DialogueResult::ChangeScreen(Box::new(ViewRecordDialogue::new(
+                        self.factory.clone(),
                         self.repo.clone(),
                         rid,
                         false,
                     )))
                 } else if sel == n_rec {
                     DialogueResult::ChangeScreenAndStartInput {
-                        dialogue: Box::new(AddRecordDialogue::new(self.repo.clone())),
+                        dialogue: Box::new(AddRecordDialogue::new(
+                            self.factory.clone(),
+                            self.repo.clone(),
+                        )),
                         prompt: "Enter password".to_string(),
                         password: true,
                     }
                 } else {
-                    let _ = block_on(self.repo.close_connection());
-                    DialogueResult::ChangeScreen(Box::new(WelcomeDialogue::new(Some(0))))
+                    let _ = repo::close_connection(&self.repo);
+                    DialogueResult::ChangeScreen(Box::new(WelcomeDialogue::new(
+                        self.factory.clone(),
+                        Some(0),
+                    )))
                 }
             }
             _ => DialogueResult::NoOp,
         }
     }
 
-    fn on_input_submit(&mut self, _value: String) -> DialogueResult {
+    fn on_input_submit(&mut self, _value: String) -> DialogueResult<F, R> {
         DialogueResult::NoOp
     }
 
-    fn on_input_cancel(&mut self) -> DialogueResult {
+    fn on_input_cancel(&mut self) -> DialogueResult<F, R> {
         DialogueResult::NoOp
     }
 
     fn on_exit(&mut self) {
-        let _ = block_on(self.repo.close_connection());
+        let _ = repo::close_connection(&self.repo);
     }
 }
 
@@ -261,8 +276,7 @@ mod tests {
 
     use crate::dialogues::{Dialogue, DialogueResult};
     use crate::fields::{RECORD_LOGIN_FIELD, RECORD_NAME_FIELD, RECORD_PASSWD_FIELD};
-    use crate::repo::TuiRepository;
-    use crate::runtime::block_on;
+    use crate::repo::FileRepositoryFactory;
     use crate::test_helpers::test_password;
     use sec_store::record::Record;
     use sec_store::repository::file::RecordsFileRepository;
@@ -274,7 +288,7 @@ mod tests {
         KeyEvent::new(code, KeyModifiers::NONE)
     }
 
-    fn repo_with_records() -> (TempDir, TuiRepository) {
+    fn repo_with_records() -> (TempDir, FileRepositoryFactory, RecordsFileRepository) {
         let tmp = TempDir::new().expect("temp dir");
         let path = tmp.path().join("repo");
         let mut repo = RecordsFileRepository::new(path, test_password());
@@ -293,16 +307,17 @@ mod tests {
             (RECORD_LOGIN_FIELD.to_string(), "octocat".to_string()),
         ]);
 
-        block_on(repo.add_record(rec1)).expect("add rec1");
-        block_on(repo.add_record(rec2)).expect("add rec2");
-        block_on(repo.save()).expect("save repo");
-        (tmp, TuiRepository::File(repo))
+        crate::runtime::block_on(repo.add_record(rec1)).expect("add rec1");
+        crate::runtime::block_on(repo.add_record(rec2)).expect("add rec2");
+        crate::runtime::block_on(repo.save()).expect("save repo");
+        let factory = FileRepositoryFactory::new(tmp.path().join("repo"));
+        (tmp, factory, repo)
     }
 
     #[test]
     fn test_navigation_wraps_up() {
-        let (_tmp, repo) = repo_with_records();
-        let mut dialogue = ViewRepoDialogue::new(repo, Some(0));
+        let (_tmp, factory, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(factory, repo, Some(0));
         let res = dialogue.handle_key(key(KeyCode::Up));
 
         assert!(matches!(res, DialogueResult::NoOp));
@@ -311,8 +326,8 @@ mod tests {
 
     #[test]
     fn test_navigation_wraps_down() {
-        let (_tmp, repo) = repo_with_records();
-        let mut dialogue = ViewRepoDialogue::new(repo, Some(3));
+        let (_tmp, factory, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(factory, repo, Some(3));
         let res = dialogue.handle_key(key(KeyCode::Down));
 
         assert!(matches!(res, DialogueResult::NoOp));
@@ -321,8 +336,8 @@ mod tests {
 
     #[test]
     fn test_search_starts_on_slash() {
-        let (_tmp, repo) = repo_with_records();
-        let mut dialogue = ViewRepoDialogue::new(repo, Some(0));
+        let (_tmp, factory, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(factory, repo, Some(0));
         let res = dialogue.handle_key(key(KeyCode::Char('/')));
 
         assert!(matches!(res, DialogueResult::NoOp));
@@ -332,8 +347,8 @@ mod tests {
 
     #[test]
     fn test_search_typing_and_backspace() {
-        let (_tmp, repo) = repo_with_records();
-        let mut dialogue = ViewRepoDialogue::new(repo, Some(1));
+        let (_tmp, factory, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(factory, repo, Some(1));
         let _ = dialogue.handle_key(key(KeyCode::Char('/')));
 
         let res1 = dialogue.handle_key(key(KeyCode::Char('m')));
@@ -348,8 +363,8 @@ mod tests {
 
     #[test]
     fn test_search_esc_clears_and_stops_search() {
-        let (_tmp, repo) = repo_with_records();
-        let mut dialogue = ViewRepoDialogue::new(repo, Some(1));
+        let (_tmp, factory, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(factory, repo, Some(1));
         let _ = dialogue.handle_key(key(KeyCode::Char('/')));
         let _ = dialogue.handle_key(key(KeyCode::Char('x')));
         let res = dialogue.handle_key(key(KeyCode::Esc));
@@ -362,8 +377,8 @@ mod tests {
 
     #[test]
     fn test_filter_matches_name_case_insensitive() {
-        let (_tmp, repo) = repo_with_records();
-        let mut dialogue = ViewRepoDialogue::new(repo, Some(0));
+        let (_tmp, factory, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(factory, repo, Some(0));
         dialogue.is_searching = true;
         dialogue.search_query = "gIt".to_string();
 
@@ -374,8 +389,8 @@ mod tests {
 
     #[test]
     fn test_filter_matches_login_case_insensitive() {
-        let (_tmp, repo) = repo_with_records();
-        let mut dialogue = ViewRepoDialogue::new(repo, Some(0));
+        let (_tmp, factory, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(factory, repo, Some(0));
         dialogue.is_searching = true;
         dialogue.search_query = "EXAMPLE".to_string();
 
@@ -386,8 +401,8 @@ mod tests {
 
     #[test]
     fn test_enter_record_changes_to_view_record() {
-        let (_tmp, repo) = repo_with_records();
-        let mut dialogue = ViewRepoDialogue::new(repo, Some(0));
+        let (_tmp, factory, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(factory, repo, Some(0));
 
         let res = dialogue.handle_key(key(KeyCode::Enter));
         assert!(matches!(res, DialogueResult::ChangeScreen(_)));
@@ -395,8 +410,8 @@ mod tests {
 
     #[test]
     fn test_enter_in_search_uses_filtered_selection() {
-        let (_tmp, repo) = repo_with_records();
-        let mut dialogue = ViewRepoDialogue::new(repo, Some(0));
+        let (_tmp, factory, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(factory, repo, Some(0));
         let _ = dialogue.handle_key(key(KeyCode::Char('/')));
         let _ = dialogue.handle_key(key(KeyCode::Char('o')));
         let _ = dialogue.handle_key(key(KeyCode::Char('c')));
@@ -413,8 +428,8 @@ mod tests {
 
     #[test]
     fn test_char_a_starts_add_record_input() {
-        let (_tmp, repo) = repo_with_records();
-        let mut dialogue = ViewRepoDialogue::new(repo, Some(0));
+        let (_tmp, factory, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(factory, repo, Some(0));
 
         let res = dialogue.handle_key(key(KeyCode::Char('a')));
         match res {
@@ -430,16 +445,16 @@ mod tests {
 
     #[test]
     fn test_char_c_closes_repository() {
-        let (_tmp, repo) = repo_with_records();
-        let mut dialogue = ViewRepoDialogue::new(repo, Some(0));
+        let (_tmp, factory, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(factory, repo, Some(0));
         let res = dialogue.handle_key(key(KeyCode::Char('c')));
         assert!(matches!(res, DialogueResult::ChangeScreen(_)));
     }
 
     #[test]
     fn test_enter_add_row_starts_add_record_input() {
-        let (_tmp, repo) = repo_with_records();
-        let mut dialogue = ViewRepoDialogue::new(repo, Some(2));
+        let (_tmp, factory, repo) = repo_with_records();
+        let mut dialogue = ViewRepoDialogue::new(factory, repo, Some(2));
         let res = dialogue.handle_key(key(KeyCode::Enter));
 
         match res {

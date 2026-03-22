@@ -1,27 +1,33 @@
 use ratatui::symbols::border;
 use ratatui::{layout::Rect, widgets::Block, Frame};
+use sec_store::repository::RecordsRepository;
 
 use crate::dialogues::{Dialogue, DialogueResult};
 use crate::record_fields::RecordFields;
-use crate::repo::TuiRepository;
-use crate::runtime::block_on;
+use crate::repo::{self, RepositoryFactory};
 
 #[derive(Debug)]
-pub struct AddRecordDialogue {
-    repo: TuiRepository,
+pub struct AddRecordDialogue<F, R> {
+    factory: F,
+    repo: R,
     record_fields: RecordFields,
 }
 
-impl AddRecordDialogue {
-    pub fn new(repo: TuiRepository) -> Self {
+impl<F, R> AddRecordDialogue<F, R> {
+    pub fn new(factory: F, repo: R) -> Self {
         Self {
+            factory,
             repo,
             record_fields: RecordFields::new(),
         }
     }
 }
 
-impl Dialogue for AddRecordDialogue {
+impl<F, R> Dialogue<F, R> for AddRecordDialogue<F, R>
+where
+    F: RepositoryFactory<R>,
+    R: RecordsRepository,
+{
     fn draw(&mut self, frame: &mut Frame, area: Rect) {
         let block = Block::bordered()
             .title(" Add record ")
@@ -29,18 +35,16 @@ impl Dialogue for AddRecordDialogue {
         frame.render_widget(block, area);
     }
 
-    fn handle_key(&mut self, _k: crossterm::event::KeyEvent) -> DialogueResult {
+    fn handle_key(&mut self, _k: crossterm::event::KeyEvent) -> DialogueResult<F, R> {
         DialogueResult::NoOp
     }
 
-    fn on_input_submit(&mut self, value: String) -> DialogueResult {
+    fn on_input_submit(&mut self, value: String) -> DialogueResult<F, R> {
         use crate::fields::{
             RECORD_DESCR_FIELD, RECORD_LOGIN_FIELD, RECORD_NAME_FIELD, RECORD_PASSWD_FIELD,
         };
         use crate::record_fields::AddRecordStep;
         use sec_store::record::Record;
-        use sec_store::repository::RecordsRepository;
-
         let step = self.record_fields.get_current_step();
         match step {
             AddRecordStep::Password => {
@@ -91,32 +95,34 @@ impl Dialogue for AddRecordDialogue {
                 let desc_value = record_fields.description.as_deref().unwrap_or("");
                 fields.push((RECORD_DESCR_FIELD.to_string(), desc_value.to_string()));
                 let record = Record::new(fields);
-                if let Err(e) = block_on(self.repo.add_record(record)) {
+                if let Err(e) = repo::add_record(&mut self.repo, record) {
                     return DialogueResult::Error(e.to_string());
                 }
-                if let Err(e) = block_on(self.repo.save()) {
+                if let Err(e) = repo::save(&mut self.repo) {
                     return DialogueResult::Error(e.to_string());
                 }
-                // Clone repo for the new screen, keep original in dialogue
                 let repo = self.repo.clone();
                 DialogueResult::ChangeScreen(Box::new(
-                    crate::dialogues::view_repo::ViewRepoDialogue::new(repo, Some(0)),
+                    crate::dialogues::view_repo::ViewRepoDialogue::new(
+                        self.factory.clone(),
+                        repo,
+                        Some(0),
+                    ),
                 ))
             }
             AddRecordStep::Complete => DialogueResult::NoOp,
         }
     }
 
-    fn on_input_cancel(&mut self) -> DialogueResult {
-        // Clone repo for the new screen, keep original in dialogue
+    fn on_input_cancel(&mut self) -> DialogueResult<F, R> {
         let repo = self.repo.clone();
         DialogueResult::ChangeScreen(Box::new(
-            crate::dialogues::view_repo::ViewRepoDialogue::new(repo, Some(0)),
+            crate::dialogues::view_repo::ViewRepoDialogue::new(self.factory.clone(), repo, Some(0)),
         ))
     }
 
     fn on_exit(&mut self) {
-        let _ = block_on(self.repo.close_connection());
+        let _ = repo::close_connection(&self.repo);
     }
 }
 
@@ -126,7 +132,7 @@ mod tests {
 
     use crate::dialogues::{Dialogue, DialogueResult};
     use crate::fields::RECORD_LOGIN_FIELD;
-    use crate::repo::TuiRepository;
+    use crate::repo::FileRepositoryFactory;
     use crate::runtime::block_on;
     use crate::test_helpers::test_password;
     use sec_store::repository::file::{OpenRecordsFileRepository, RecordsFileRepository};
@@ -134,19 +140,25 @@ mod tests {
 
     use super::AddRecordDialogue;
 
-    fn make_repo() -> (TempDir, TuiRepository, String) {
+    fn make_repo() -> (
+        TempDir,
+        FileRepositoryFactory,
+        RecordsFileRepository,
+        String,
+    ) {
         let tmp = TempDir::new().expect("temp dir");
         let path = tmp.path().join("repo");
         let repo_password = test_password();
         let mut repo = RecordsFileRepository::new(path, repo_password.clone());
-        block_on(repo.save()).expect("save repo");
-        (tmp, TuiRepository::File(repo), repo_password)
+        crate::runtime::block_on(repo.save()).expect("save repo");
+        let factory = FileRepositoryFactory::new(tmp.path().join("repo"));
+        (tmp, factory, repo, repo_password)
     }
 
     #[test]
     fn test_empty_password_returns_error() {
-        let (_tmp, repo, _repo_password) = make_repo();
-        let mut dialogue = AddRecordDialogue::new(repo);
+        let (_tmp, factory, repo, _repo_password) = make_repo();
+        let mut dialogue = AddRecordDialogue::new(factory, repo);
 
         let res = dialogue.on_input_submit(String::new());
         match res {
@@ -157,8 +169,8 @@ mod tests {
 
     #[test]
     fn test_password_step_moves_to_name() {
-        let (_tmp, repo, _repo_password) = make_repo();
-        let mut dialogue = AddRecordDialogue::new(repo);
+        let (_tmp, factory, repo, _repo_password) = make_repo();
+        let mut dialogue = AddRecordDialogue::new(factory, repo);
 
         let res = dialogue.on_input_submit("pw".to_string());
         match res {
@@ -172,8 +184,8 @@ mod tests {
 
     #[test]
     fn test_empty_name_returns_error() {
-        let (_tmp, repo, _repo_password) = make_repo();
-        let mut dialogue = AddRecordDialogue::new(repo);
+        let (_tmp, factory, repo, _repo_password) = make_repo();
+        let mut dialogue = AddRecordDialogue::new(factory, repo);
         let _ = dialogue.on_input_submit("pw".to_string());
 
         let res = dialogue.on_input_submit(String::new());
@@ -185,8 +197,8 @@ mod tests {
 
     #[test]
     fn test_name_step_moves_to_login() {
-        let (_tmp, repo, _repo_password) = make_repo();
-        let mut dialogue = AddRecordDialogue::new(repo);
+        let (_tmp, factory, repo, _repo_password) = make_repo();
+        let mut dialogue = AddRecordDialogue::new(factory, repo);
         let _ = dialogue.on_input_submit("pw".to_string());
 
         let res = dialogue.on_input_submit("mail".to_string());
@@ -201,8 +213,8 @@ mod tests {
 
     #[test]
     fn test_login_step_moves_to_description() {
-        let (_tmp, repo, _repo_password) = make_repo();
-        let mut dialogue = AddRecordDialogue::new(repo);
+        let (_tmp, factory, repo, _repo_password) = make_repo();
+        let mut dialogue = AddRecordDialogue::new(factory, repo);
         let _ = dialogue.on_input_submit("pw".to_string());
         let _ = dialogue.on_input_submit("mail".to_string());
 
@@ -218,9 +230,9 @@ mod tests {
 
     #[test]
     fn test_complete_flow_adds_record_and_changes_screen() {
-        let (tmp, repo, repo_password) = make_repo();
+        let (tmp, factory, repo, repo_password) = make_repo();
         let path = tmp.path().join("repo");
-        let mut dialogue = AddRecordDialogue::new(repo);
+        let mut dialogue = AddRecordDialogue::new(factory, repo);
         let _ = dialogue.on_input_submit("pw".to_string());
         let _ = dialogue.on_input_submit("mail".to_string());
         let _ = dialogue.on_input_submit("user".to_string());
@@ -235,8 +247,8 @@ mod tests {
 
     #[test]
     fn test_complete_flow_with_empty_optional_fields_still_succeeds() {
-        let (_tmp, repo, _repo_password) = make_repo();
-        let mut dialogue = AddRecordDialogue::new(repo);
+        let (_tmp, factory, repo, _repo_password) = make_repo();
+        let mut dialogue = AddRecordDialogue::new(factory, repo);
         let _ = dialogue.on_input_submit("pw".to_string());
         let _ = dialogue.on_input_submit("mail".to_string());
         let _ = dialogue.on_input_submit(String::new());
@@ -247,17 +259,17 @@ mod tests {
 
     #[test]
     fn test_cancel_changes_to_view_repo() {
-        let (_tmp, repo, _repo_password) = make_repo();
-        let mut dialogue = AddRecordDialogue::new(repo);
+        let (_tmp, factory, repo, _repo_password) = make_repo();
+        let mut dialogue = AddRecordDialogue::new(factory, repo);
         let res = dialogue.on_input_cancel();
         assert!(matches!(res, DialogueResult::ChangeScreen(_)));
     }
 
     #[test]
     fn test_empty_login_is_not_persisted() {
-        let (tmp, repo, repo_password) = make_repo();
+        let (tmp, factory, repo, repo_password) = make_repo();
         let path = tmp.path().join("repo");
-        let mut dialogue = AddRecordDialogue::new(repo);
+        let mut dialogue = AddRecordDialogue::new(factory, repo);
         let _ = dialogue.on_input_submit("record-password".to_string());
         let _ = dialogue.on_input_submit("mail".to_string());
         let _ = dialogue.on_input_submit(String::new());

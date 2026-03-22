@@ -1,10 +1,13 @@
 use ratatui::symbols::border;
 use ratatui::{layout::Rect, widgets::Block, Frame};
+use sec_store::repository::RecordsRepository;
 
 use crate::dialogues::{Dialogue, DialogueResult};
+use crate::repo::RepositoryFactory;
 
 #[derive(Debug)]
-pub struct CreateRepoDialogue {
+pub struct CreateRepoDialogue<F> {
+    factory: F,
     step: CreateRepoStep,
     first_password: String,
 }
@@ -15,9 +18,10 @@ pub enum CreateRepoStep {
     Password2,
 }
 
-impl CreateRepoDialogue {
-    pub fn new() -> Self {
+impl<F> CreateRepoDialogue<F> {
+    pub fn new(factory: F) -> Self {
         Self {
+            factory,
             step: CreateRepoStep::Password1,
             first_password: String::new(),
         }
@@ -29,7 +33,11 @@ impl CreateRepoDialogue {
     }
 }
 
-impl Dialogue for CreateRepoDialogue {
+impl<F, R> Dialogue<F, R> for CreateRepoDialogue<F>
+where
+    F: RepositoryFactory<R>,
+    R: RecordsRepository,
+{
     fn draw(&mut self, frame: &mut Frame, area: Rect) {
         let block = Block::bordered()
             .title(" Create repository ")
@@ -37,11 +45,11 @@ impl Dialogue for CreateRepoDialogue {
         frame.render_widget(block, area);
     }
 
-    fn handle_key(&mut self, _k: crossterm::event::KeyEvent) -> DialogueResult {
+    fn handle_key(&mut self, _k: crossterm::event::KeyEvent) -> DialogueResult<F, R> {
         DialogueResult::NoOp
     }
 
-    fn on_input_submit(&mut self, value: String) -> DialogueResult {
+    fn on_input_submit(&mut self, value: String) -> DialogueResult<F, R> {
         match self.step {
             CreateRepoStep::Password1 => {
                 if value.is_empty() {
@@ -60,9 +68,13 @@ impl Dialogue for CreateRepoDialogue {
                         password: true,
                     };
                 }
-                match crate::repo::create_repo(self.first_password.clone()) {
+                match self.factory.create_repo(self.first_password.clone()) {
                     Ok(repo) => DialogueResult::ChangeScreen(Box::new(
-                        crate::dialogues::view_repo::ViewRepoDialogue::new(repo, Some(0)),
+                        crate::dialogues::view_repo::ViewRepoDialogue::new(
+                            self.factory.clone(),
+                            repo,
+                            Some(0),
+                        ),
                     )),
                     Err(e) => DialogueResult::Error(e.to_string()),
                 }
@@ -70,8 +82,9 @@ impl Dialogue for CreateRepoDialogue {
         }
     }
 
-    fn on_input_cancel(&mut self) -> DialogueResult {
+    fn on_input_cancel(&mut self) -> DialogueResult<F, R> {
         DialogueResult::ChangeScreen(Box::new(crate::dialogues::welcome::WelcomeDialogue::new(
+            self.factory.clone(),
             Some(0),
         )))
     }
@@ -80,7 +93,7 @@ impl Dialogue for CreateRepoDialogue {
 #[cfg(test)]
 mod tests {
     use crate::dialogues::{Dialogue, DialogueResult};
-    use crate::repo;
+    use crate::repo::{FileRepositoryFactory, RepositoryFactory};
     use crate::test_helpers::{test_password, ScopedTuiDataDir};
 
     use super::{CreateRepoDialogue, CreateRepoStep};
@@ -88,7 +101,8 @@ mod tests {
     #[test]
     fn test_empty_first_password_returns_error() {
         let _scope = ScopedTuiDataDir::new();
-        let mut dialogue = CreateRepoDialogue::new();
+        let factory = FileRepositoryFactory::new(_scope.temp_dir.path().join("repo"));
+        let mut dialogue = CreateRepoDialogue::new(factory);
         let res = dialogue.on_input_submit(String::new());
 
         match res {
@@ -100,7 +114,8 @@ mod tests {
     #[test]
     fn test_first_password_moves_to_repeat_step() {
         let _scope = ScopedTuiDataDir::new();
-        let mut dialogue = CreateRepoDialogue::new();
+        let factory = FileRepositoryFactory::new(_scope.temp_dir.path().join("repo"));
+        let mut dialogue = CreateRepoDialogue::new(factory);
         let res = dialogue.on_input_submit(test_password());
 
         match res {
@@ -116,7 +131,8 @@ mod tests {
     #[test]
     fn test_repeat_password_mismatch_reprompts() {
         let _scope = ScopedTuiDataDir::new();
-        let mut dialogue = CreateRepoDialogue::new();
+        let factory = FileRepositoryFactory::new(_scope.temp_dir.path().join("repo"));
+        let mut dialogue = CreateRepoDialogue::new(factory);
         let _ = dialogue.on_input_submit(test_password());
         let res = dialogue.on_input_submit("wrong".to_string());
 
@@ -132,19 +148,21 @@ mod tests {
     #[test]
     fn test_create_repo_success_changes_screen() {
         let _scope = ScopedTuiDataDir::new();
-        let mut dialogue = CreateRepoDialogue::new();
+        let factory = FileRepositoryFactory::new(_scope.temp_dir.path().join("repo"));
+        let mut dialogue = CreateRepoDialogue::new(factory.clone());
         let password = test_password();
         let _ = dialogue.on_input_submit(password.clone());
         let res = dialogue.on_input_submit(password);
 
         assert!(matches!(res, DialogueResult::ChangeScreen(_)));
-        assert!(repo::has_repo());
+        assert!(factory.has_repo());
     }
 
     #[test]
     fn test_cancel_returns_to_welcome() {
         let _scope = ScopedTuiDataDir::new();
-        let mut dialogue = CreateRepoDialogue::new();
+        let factory = FileRepositoryFactory::new(_scope.temp_dir.path().join("repo"));
+        let mut dialogue = CreateRepoDialogue::new(factory);
         let res = dialogue.on_input_cancel();
         assert!(matches!(res, DialogueResult::ChangeScreen(_)));
     }

@@ -1,3 +1,8 @@
+use crate::dialogues::{Dialogue, DialogueResult};
+use crate::fields::{
+    RECORD_DESCR_FIELD, RECORD_LOGIN_FIELD, RECORD_NAME_FIELD, RECORD_PASSWD_FIELD,
+};
+use crate::repo::{self, RepositoryFactory};
 use ratatui::symbols::border;
 use ratatui::{
     layout::Rect,
@@ -8,28 +13,23 @@ use ratatui::{
 };
 use sec_store::repository::RecordsRepository;
 
-use crate::dialogues::{Dialogue, DialogueResult};
-use crate::fields::{
-    RECORD_DESCR_FIELD, RECORD_LOGIN_FIELD, RECORD_NAME_FIELD, RECORD_PASSWD_FIELD,
-};
-use crate::repo::TuiRepository;
-use crate::runtime::block_on;
-
 type RecordId = String;
 
 #[derive(Debug)]
-pub struct EditRecordDialogue {
-    repo: TuiRepository,
+pub struct EditRecordDialogue<F, R> {
+    factory: F,
+    repo: R,
     record_id: RecordId,
     list_state: ListState,
     editing_field: Option<String>,
 }
 
-impl EditRecordDialogue {
-    pub fn new(repo: TuiRepository, record_id: RecordId, selected: Option<usize>) -> Self {
+impl<F, R> EditRecordDialogue<F, R> {
+    pub fn new(factory: F, repo: R, record_id: RecordId, selected: Option<usize>) -> Self {
         let mut state = ListState::default();
         state.select(selected);
         Self {
+            factory,
             repo,
             record_id,
             list_state: state,
@@ -38,7 +38,11 @@ impl EditRecordDialogue {
     }
 }
 
-impl Dialogue for EditRecordDialogue {
+impl<F, R> Dialogue<F, R> for EditRecordDialogue<F, R>
+where
+    F: RepositoryFactory<R>,
+    R: RecordsRepository,
+{
     fn draw(&mut self, frame: &mut Frame, area: Rect) {
         let block = Block::bordered()
             .title(" Edit record ")
@@ -48,8 +52,7 @@ impl Dialogue for EditRecordDialogue {
         frame.render_widget(block, area);
 
         if let Some(ref field) = self.editing_field {
-            let r = self.repo.clone();
-            if let Ok(Some(rec)) = block_on(r.get(&self.record_id)) {
+            if let Ok(Some(rec)) = repo::get_record(&self.repo, &self.record_id) {
                 let val = rec.get_field_value(field).unwrap_or_default();
                 let label = match field.as_str() {
                     RECORD_NAME_FIELD => "Name",
@@ -62,8 +65,7 @@ impl Dialogue for EditRecordDialogue {
                 frame.render_widget(Paragraph::new(text).wrap(Wrap { trim: true }), inner);
             }
         } else {
-            let r = self.repo.clone();
-            let rec = match block_on(r.get(&self.record_id)) {
+            let rec = match repo::get_record(&self.repo, &self.record_id) {
                 Ok(Some(x)) => x,
                 _ => return,
             };
@@ -101,7 +103,7 @@ impl Dialogue for EditRecordDialogue {
         );
     }
 
-    fn handle_key(&mut self, k: crossterm::event::KeyEvent) -> DialogueResult {
+    fn handle_key(&mut self, k: crossterm::event::KeyEvent) -> DialogueResult<F, R> {
         use crossterm::event::KeyCode;
 
         if self.editing_field.is_some() {
@@ -109,8 +111,7 @@ impl Dialogue for EditRecordDialogue {
             return DialogueResult::NoOp;
         }
 
-        let r = self.repo.clone();
-        let rec = match block_on(r.get(&self.record_id)) {
+        let rec = match repo::get_record(&self.repo, &self.record_id) {
             Ok(Some(x)) => x,
             _ => return DialogueResult::NoOp,
         };
@@ -148,6 +149,7 @@ impl Dialogue for EditRecordDialogue {
             }
             KeyCode::Esc => DialogueResult::ChangeScreen(Box::new(
                 crate::dialogues::view_record::ViewRecordDialogue::new(
+                    self.factory.clone(),
                     self.repo.clone(),
                     self.record_id.clone(),
                     false,
@@ -157,17 +159,21 @@ impl Dialogue for EditRecordDialogue {
         }
     }
 
-    fn on_input_submit(&mut self, value: String) -> DialogueResult {
+    fn on_input_submit(&mut self, value: String) -> DialogueResult<F, R> {
         if let Some(field) = self.editing_field.clone() {
-            let mut r = self.repo.clone();
             let rid = self.record_id.clone();
-            if let Ok(Some(mut rec)) = block_on(r.get(&rid)) {
+            if let Ok(Some(mut rec)) = repo::get_record(&self.repo, &rid) {
                 if rec.update_field(field.clone(), value).is_ok()
-                    && block_on(r.update(rec)).is_ok()
-                    && block_on(r.save()).is_ok()
+                    && repo::update_record(&mut self.repo, rec).is_ok()
+                    && repo::save(&mut self.repo).is_ok()
                 {
                     return DialogueResult::ChangeScreen(Box::new(
-                        crate::dialogues::view_record::ViewRecordDialogue::new(r, rid, false),
+                        crate::dialogues::view_record::ViewRecordDialogue::new(
+                            self.factory.clone(),
+                            self.repo.clone(),
+                            rid,
+                            false,
+                        ),
                     ));
                 }
             }
@@ -178,13 +184,13 @@ impl Dialogue for EditRecordDialogue {
         }
     }
 
-    fn on_input_cancel(&mut self) -> DialogueResult {
+    fn on_input_cancel(&mut self) -> DialogueResult<F, R> {
         self.editing_field = None;
         DialogueResult::NoOp
     }
 
     fn on_exit(&mut self) {
-        let _ = block_on(self.repo.close_connection());
+        let _ = repo::close_connection(&self.repo);
     }
 }
 
@@ -197,7 +203,7 @@ mod tests {
     use crate::fields::{
         RECORD_DESCR_FIELD, RECORD_LOGIN_FIELD, RECORD_NAME_FIELD, RECORD_PASSWD_FIELD,
     };
-    use crate::repo::TuiRepository;
+    use crate::repo::FileRepositoryFactory;
     use crate::runtime::block_on;
     use crate::test_helpers::test_password;
     use sec_store::record::Record;
@@ -210,7 +216,13 @@ mod tests {
         KeyEvent::new(code, KeyModifiers::NONE)
     }
 
-    fn make_repo_with_full_record() -> (TempDir, TuiRepository, String, String) {
+    fn make_repo_with_full_record() -> (
+        TempDir,
+        FileRepositoryFactory,
+        RecordsFileRepository,
+        String,
+        String,
+    ) {
         let tmp = TempDir::new().expect("temp dir");
         let path = tmp.path().join("repo");
         let repo_password = test_password();
@@ -222,15 +234,16 @@ mod tests {
             (RECORD_DESCR_FIELD.to_string(), "desc".to_string()),
         ]);
         let id = rec.id.clone();
-        block_on(repo.add_record(rec)).expect("add");
-        block_on(repo.save()).expect("save");
-        (tmp, TuiRepository::File(repo), id, repo_password)
+        crate::runtime::block_on(repo.add_record(rec)).expect("add");
+        crate::runtime::block_on(repo.save()).expect("save");
+        let factory = FileRepositoryFactory::new(tmp.path().join("repo"));
+        (tmp, factory, repo, id, repo_password)
     }
 
     #[test]
     fn test_navigation_wraps_up() {
-        let (_tmp, repo, id, _repo_password) = make_repo_with_full_record();
-        let mut dialogue = EditRecordDialogue::new(repo, id, Some(0));
+        let (_tmp, factory, repo, id, _repo_password) = make_repo_with_full_record();
+        let mut dialogue = EditRecordDialogue::new(factory, repo, id, Some(0));
 
         let res = dialogue.handle_key(key(KeyCode::Up));
         assert!(matches!(res, DialogueResult::NoOp));
@@ -239,8 +252,8 @@ mod tests {
 
     #[test]
     fn test_navigation_wraps_down() {
-        let (_tmp, repo, id, _repo_password) = make_repo_with_full_record();
-        let mut dialogue = EditRecordDialogue::new(repo, id, Some(3));
+        let (_tmp, factory, repo, id, _repo_password) = make_repo_with_full_record();
+        let mut dialogue = EditRecordDialogue::new(factory, repo, id, Some(3));
 
         let res = dialogue.handle_key(key(KeyCode::Down));
         assert!(matches!(res, DialogueResult::NoOp));
@@ -249,8 +262,8 @@ mod tests {
 
     #[test]
     fn test_enter_name_field_starts_plain_input() {
-        let (_tmp, repo, id, _repo_password) = make_repo_with_full_record();
-        let mut dialogue = EditRecordDialogue::new(repo, id, Some(0));
+        let (_tmp, factory, repo, id, _repo_password) = make_repo_with_full_record();
+        let mut dialogue = EditRecordDialogue::new(factory, repo, id, Some(0));
 
         let res = dialogue.handle_key(key(KeyCode::Enter));
         match res {
@@ -265,8 +278,8 @@ mod tests {
 
     #[test]
     fn test_enter_password_field_starts_password_input() {
-        let (_tmp, repo, id, _repo_password) = make_repo_with_full_record();
-        let mut dialogue = EditRecordDialogue::new(repo, id, Some(1));
+        let (_tmp, factory, repo, id, _repo_password) = make_repo_with_full_record();
+        let mut dialogue = EditRecordDialogue::new(factory, repo, id, Some(1));
 
         let res = dialogue.handle_key(key(KeyCode::Enter));
         match res {
@@ -281,8 +294,8 @@ mod tests {
 
     #[test]
     fn test_escape_returns_to_view_record() {
-        let (_tmp, repo, id, _repo_password) = make_repo_with_full_record();
-        let mut dialogue = EditRecordDialogue::new(repo, id, Some(0));
+        let (_tmp, factory, repo, id, _repo_password) = make_repo_with_full_record();
+        let mut dialogue = EditRecordDialogue::new(factory, repo, id, Some(0));
 
         let res = dialogue.handle_key(key(KeyCode::Esc));
         assert!(matches!(res, DialogueResult::ChangeScreen(_)));
@@ -290,8 +303,8 @@ mod tests {
 
     #[test]
     fn test_input_submit_updates_record() {
-        let (tmp, repo, id, repo_password) = make_repo_with_full_record();
-        let mut dialogue = EditRecordDialogue::new(repo, id.clone(), Some(0));
+        let (tmp, factory, repo, id, repo_password) = make_repo_with_full_record();
+        let mut dialogue = EditRecordDialogue::new(factory, repo, id.clone(), Some(0));
         let _ = dialogue.handle_key(key(KeyCode::Enter));
 
         let res = dialogue.on_input_submit("New Mail".to_string());
@@ -310,8 +323,8 @@ mod tests {
 
     #[test]
     fn test_input_cancel_exits_edit_mode() {
-        let (_tmp, repo, id, _repo_password) = make_repo_with_full_record();
-        let mut dialogue = EditRecordDialogue::new(repo, id, Some(0));
+        let (_tmp, factory, repo, id, _repo_password) = make_repo_with_full_record();
+        let mut dialogue = EditRecordDialogue::new(factory, repo, id, Some(0));
         let _ = dialogue.handle_key(key(KeyCode::Enter));
         assert!(dialogue.editing_field.is_some());
 
@@ -327,8 +340,9 @@ mod tests {
         let mut repo = RecordsFileRepository::new(path, test_password());
         block_on(repo.save()).expect("save");
 
+        let factory = FileRepositoryFactory::new(tmp.path().join("repo"));
         let mut dialogue =
-            EditRecordDialogue::new(TuiRepository::File(repo), "missing-id".to_string(), Some(0));
+            EditRecordDialogue::new(factory, repo, "missing-id".to_string(), Some(0));
         let res = dialogue.handle_key(key(KeyCode::Enter));
         assert!(matches!(res, DialogueResult::NoOp));
     }

@@ -1,23 +1,21 @@
+use std::fmt::Debug;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
 
 use anyhow::{Context, Result};
-use async_trait::async_trait;
 use clap::ValueEnum;
+use sec_store::record::{Record, RecordId};
 use sec_store::repository::file::{OpenRecordsFileRepository, RecordsFileRepository};
 use sec_store::repository::remote::{
     RemoteClientConfig, RemoteRecordsRepository, RemoteRepositoriesClient,
 };
 use sec_store::repository::{
-    AddResult, CreateRepositoryError, OpenRepository, RecordsRepository, RepositoriesSource,
-    RepositoryOpenError, UpdateResult,
+    CreateRepositoryError, OpenRepository, RecordsRepository, RepositoriesSource,
+    RepositoryOpenError,
 };
 use serde::Deserialize;
 
 use crate::runtime::block_on;
-
-static REPOSITORY_SOURCE_OVERRIDE: OnceLock<Mutex<Option<RepositorySource>>> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum ConnectionMode {
@@ -39,10 +37,24 @@ pub enum RepositorySource {
     Remote(RemoteRepositoryConfig),
 }
 
+pub trait RepositoryFactory<R>: Debug + Clone + Sync + Send + 'static
+where
+    R: RecordsRepository,
+{
+    fn has_repo(&self) -> bool;
+    fn create_repo(&self, password: String) -> Result<R>;
+    fn open_repo(&self, password: String) -> Result<R>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileRepositoryFactory {
+    repo_path: PathBuf,
+}
+
 #[derive(Debug, Clone)]
-pub enum TuiRepository {
-    File(RecordsFileRepository),
-    Remote(RemoteRecordsRepository),
+pub struct RemoteRepositoryFactory {
+    config: RemoteRepositoryConfig,
+    client: RemoteRepositoriesClient,
 }
 
 #[derive(Debug, Deserialize)]
@@ -53,12 +65,29 @@ struct RawRemoteRepositoryTomlConfig {
     repository_name: String,
 }
 
-fn configured_repository_source() -> Option<RepositorySource> {
-    REPOSITORY_SOURCE_OVERRIDE
-        .get_or_init(|| Mutex::new(None))
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .clone()
+impl FileRepositoryFactory {
+    pub fn new(repo_path: PathBuf) -> Self {
+        Self { repo_path }
+    }
+
+    pub fn repo_path(&self) -> &Path {
+        &self.repo_path
+    }
+}
+
+impl RemoteRepositoryFactory {
+    pub fn new(config: RemoteRepositoryConfig) -> Result<Self> {
+        let client = block_on(RemoteRepositoriesClient::from_config(RemoteClientConfig {
+            base_url: config.base_url.clone(),
+            client_identity_pem_path: config
+                .client_identity_pem_path
+                .to_string_lossy()
+                .into_owned(),
+            ca_cert_pem_path: config.ca_cert_pem_path.to_string_lossy().into_owned(),
+        }))?;
+
+        Ok(Self { config, client })
+    }
 }
 
 fn resolve_from_config_dir(base_dir: &Path, path: PathBuf) -> PathBuf {
@@ -69,21 +98,12 @@ fn resolve_from_config_dir(base_dir: &Path, path: PathBuf) -> PathBuf {
     }
 }
 
-fn repository_source() -> RepositorySource {
-    configured_repository_source().unwrap_or_else(|| RepositorySource::File {
-        repo_path: default_repo_path(),
-    })
-}
-
-fn build_remote_client(config: &RemoteRepositoryConfig) -> Result<RemoteRepositoriesClient> {
-    block_on(RemoteRepositoriesClient::from_config(RemoteClientConfig {
-        base_url: config.base_url.clone(),
-        client_identity_pem_path: config
-            .client_identity_pem_path
-            .to_string_lossy()
-            .into_owned(),
-        ca_cert_pem_path: config.ca_cert_pem_path.to_string_lossy().into_owned(),
-    }))
+fn ensure_data_dir_for_path(repo_path: &Path) -> Result<PathBuf> {
+    let data_dir = resolve_data_dir(repo_path);
+    if !data_dir.exists() {
+        fs::create_dir_all(&data_dir).with_context(|| format!("create data dir {:?}", data_dir))?;
+    }
+    Ok(data_dir)
 }
 
 fn map_create_error(error: CreateRepositoryError) -> anyhow::Error {
@@ -111,75 +131,94 @@ fn map_open_error(error: RepositoryOpenError) -> anyhow::Error {
     }
 }
 
-impl TuiRepository {
-    pub async fn close_connection(&self) -> Result<()> {
-        match self.clone() {
-            Self::File(_) => Ok(()),
-            Self::Remote(repo) => repo.close().await,
-        }
+impl RepositoryFactory<RecordsFileRepository> for FileRepositoryFactory {
+    fn has_repo(&self) -> bool {
+        self.repo_path.exists()
+    }
+
+    fn create_repo(&self, password: String) -> Result<RecordsFileRepository> {
+        ensure_data_dir_for_path(&self.repo_path)?;
+        let mut repo = RecordsFileRepository::new(self.repo_path.clone(), password);
+        block_on(repo.save())?;
+        Ok(repo)
+    }
+
+    fn open_repo(&self, password: String) -> Result<RecordsFileRepository> {
+        let repo = block_on(OpenRecordsFileRepository(self.repo_path.clone()).open(password))
+            .map_err(map_open_error)?;
+        Ok(repo)
     }
 }
 
-#[async_trait]
-impl RecordsRepository for TuiRepository {
-    async fn cancel(&mut self) -> Result<()> {
-        match self {
-            Self::File(repo) => repo.cancel().await,
-            Self::Remote(repo) => repo.cancel().await,
-        }
+impl RepositoryFactory<RemoteRecordsRepository> for RemoteRepositoryFactory {
+    fn has_repo(&self) -> bool {
+        true
     }
 
-    async fn save(&mut self) -> Result<()> {
-        match self {
-            Self::File(repo) => repo.save().await,
-            Self::Remote(repo) => repo.save().await,
-        }
+    fn create_repo(&self, password: String) -> Result<RemoteRecordsRepository> {
+        block_on(
+            self.client
+                .create_repository(&self.config.repository_name, password),
+        )
+        .map_err(map_create_error)
     }
 
-    async fn get_records(&self) -> Result<Vec<sec_store::record::Record>> {
-        match self {
-            Self::File(repo) => repo.get_records().await,
-            Self::Remote(repo) => repo.get_records().await,
-        }
+    fn open_repo(&self, password: String) -> Result<RemoteRecordsRepository> {
+        block_on(
+            self.client
+                .open_repository(&self.config.repository_name, password),
+        )
+        .map_err(map_open_error)
     }
+}
 
-    async fn get(
-        &self,
-        record_id: &sec_store::record::RecordId,
-    ) -> Result<Option<sec_store::record::Record>> {
-        match self {
-            Self::File(repo) => repo.get(record_id).await,
-            Self::Remote(repo) => repo.get(record_id).await,
-        }
-    }
+pub fn close_connection<R>(repo: &R) -> Result<()>
+where
+    R: RecordsRepository,
+{
+    block_on(repo.close())
+}
 
-    async fn update(&mut self, record: sec_store::record::Record) -> UpdateResult<()> {
-        match self {
-            Self::File(repo) => repo.update(record).await,
-            Self::Remote(repo) => repo.update(record).await,
-        }
-    }
+pub fn get_records<R>(repo: &R) -> Result<Vec<Record>>
+where
+    R: RecordsRepository,
+{
+    block_on(repo.get_records())
+}
 
-    async fn delete(&mut self, record_id: &sec_store::record::RecordId) -> UpdateResult<()> {
-        match self {
-            Self::File(repo) => repo.delete(record_id).await,
-            Self::Remote(repo) => repo.delete(record_id).await,
-        }
-    }
+pub fn get_record<R>(repo: &R, record_id: &RecordId) -> Result<Option<Record>>
+where
+    R: RecordsRepository,
+{
+    block_on(repo.get(record_id))
+}
 
-    async fn add_record(&mut self, record: sec_store::record::Record) -> AddResult<()> {
-        match self {
-            Self::File(repo) => repo.add_record(record).await,
-            Self::Remote(repo) => repo.add_record(record).await,
-        }
-    }
+pub fn add_record<R>(repo: &mut R, record: Record) -> Result<(), anyhow::Error>
+where
+    R: RecordsRepository,
+{
+    block_on(repo.add_record(record)).map_err(Into::into)
+}
 
-    async fn dump(&self) -> Result<Vec<u8>> {
-        match self {
-            Self::File(repo) => repo.dump().await,
-            Self::Remote(repo) => repo.dump().await,
-        }
-    }
+pub fn update_record<R>(repo: &mut R, record: Record) -> Result<(), anyhow::Error>
+where
+    R: RecordsRepository,
+{
+    block_on(repo.update(record)).map_err(Into::into)
+}
+
+pub fn delete_record<R>(repo: &mut R, record_id: &RecordId) -> Result<(), anyhow::Error>
+where
+    R: RecordsRepository,
+{
+    block_on(repo.delete(record_id)).map_err(Into::into)
+}
+
+pub fn save<R>(repo: &mut R) -> Result<()>
+where
+    R: RecordsRepository,
+{
+    block_on(repo.save())
 }
 
 pub fn default_repo_path() -> PathBuf {
@@ -216,87 +255,6 @@ pub fn load_remote_repository_config(path: impl AsRef<Path>) -> Result<RemoteRep
     })
 }
 
-pub fn configure_repository_source(source: RepositorySource) {
-    *REPOSITORY_SOURCE_OVERRIDE
-        .get_or_init(|| Mutex::new(None))
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(source);
-}
-
-pub fn configure_repo_path(repo_path: PathBuf) {
-    configure_repository_source(RepositorySource::File { repo_path });
-}
-
-#[cfg(test)]
-pub(crate) fn clear_configured_repo_path() {
-    *REPOSITORY_SOURCE_OVERRIDE
-        .get_or_init(|| Mutex::new(None))
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
-}
-
-fn data_dir() -> PathBuf {
-    match repository_source() {
-        RepositorySource::File { repo_path } => resolve_data_dir(&repo_path),
-        RepositorySource::Remote(_) => std::env::current_dir().unwrap_or_default(),
-    }
-}
-
-fn repo_path() -> PathBuf {
-    match repository_source() {
-        RepositorySource::File { repo_path } => repo_path,
-        RepositorySource::Remote(_) => default_repo_path(),
-    }
-}
-
-pub fn ensure_data_dir() -> Result<PathBuf> {
-    let d = data_dir();
-    if !d.exists() {
-        fs::create_dir_all(&d).with_context(|| format!("create data dir {:?}", d))?;
-    }
-    Ok(d)
-}
-
-pub fn has_repo() -> bool {
-    match repository_source() {
-        RepositorySource::File { .. } => repo_path().exists(),
-        RepositorySource::Remote(_) => true,
-    }
-}
-
-pub fn create_repo(password: String) -> Result<TuiRepository> {
-    match repository_source() {
-        RepositorySource::File { repo_path } => {
-            ensure_data_dir()?;
-            let mut repo = RecordsFileRepository::new(repo_path, password);
-            block_on(repo.save())?;
-            Ok(TuiRepository::File(repo))
-        }
-        RepositorySource::Remote(config) => {
-            let client = build_remote_client(&config)?;
-            let repo = block_on(client.create_repository(&config.repository_name, password))
-                .map_err(map_create_error)?;
-            Ok(TuiRepository::Remote(repo))
-        }
-    }
-}
-
-pub fn open_repo(password: String) -> Result<TuiRepository> {
-    match repository_source() {
-        RepositorySource::File { repo_path } => {
-            let repo = block_on(OpenRecordsFileRepository(repo_path).open(password))
-                .map_err(map_open_error)?;
-            Ok(TuiRepository::File(repo))
-        }
-        RepositorySource::Remote(config) => {
-            let client = build_remote_client(&config)?;
-            let repo = block_on(client.open_repository(&config.repository_name, password))
-                .map_err(map_open_error)?;
-            Ok(TuiRepository::Remote(repo))
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -305,13 +263,12 @@ mod tests {
     use clap::ValueEnum;
     use tempfile::TempDir;
 
-    use crate::test_helpers::{test_password, ScopedTuiDataDir};
+    use crate::test_helpers::test_password;
 
     use super::{
-        clear_configured_repo_path, configure_repo_path, configure_repository_source, create_repo,
-        default_repo_path, ensure_data_dir, has_repo, load_remote_repository_config, open_repo,
-        resolve_data_dir, resolve_repo_path, ConnectionMode, RemoteRepositoryConfig,
-        RepositorySource,
+        default_repo_path, ensure_data_dir_for_path, load_remote_repository_config,
+        resolve_data_dir, resolve_repo_path, ConnectionMode, FileRepositoryFactory,
+        RemoteRepositoryConfig, RepositoryFactory,
     };
 
     #[test]
@@ -349,71 +306,86 @@ mod tests {
 
     #[test]
     fn test_ensure_data_dir_creates_directory() {
-        let scope = ScopedTuiDataDir::new();
-        let data_dir = ensure_data_dir().expect("failed to create data dir");
-        assert_eq!(data_dir, scope.temp_dir.path());
+        let temp_dir = TempDir::new().expect("temp dir");
+        let repo_path = temp_dir.path().join("repo");
+        let data_dir = ensure_data_dir_for_path(&repo_path).expect("failed to create data dir");
+        assert_eq!(data_dir, temp_dir.path());
         assert!(data_dir.exists());
         assert!(data_dir.is_dir());
     }
 
     #[test]
     fn test_has_repo_false_before_creation() {
-        let _scope = ScopedTuiDataDir::new();
-        assert!(!has_repo());
+        let temp_dir = TempDir::new().expect("temp dir");
+        let factory = FileRepositoryFactory::new(temp_dir.path().join("repo"));
+        assert!(!factory.has_repo());
     }
 
     #[test]
     fn test_create_repo_creates_file() {
-        let scope = ScopedTuiDataDir::new();
-        create_repo(test_password()).expect("repo should be created");
+        let temp_dir = TempDir::new().expect("temp dir");
+        let repo_path = temp_dir.path().join("repo");
+        let factory = FileRepositoryFactory::new(repo_path.clone());
+        factory
+            .create_repo(test_password())
+            .expect("repo should be created");
 
-        let repo_file = scope.temp_dir.path().join("repo");
-        assert!(repo_file.exists());
+        assert!(repo_path.exists());
     }
 
     #[test]
     fn test_create_repo_uses_configured_repo_path() {
-        let _scope = ScopedTuiDataDir::new();
-        let repo_file = std::env::temp_dir().join("passwordskeeper-custom-repo-file");
-        if repo_file.exists() {
-            std::fs::remove_file(&repo_file).expect("remove stale repo file");
-        }
+        let temp_dir = TempDir::new().expect("temp dir");
+        let repo_file = temp_dir.path().join("passwordskeeper-custom-repo-file");
+        let factory = FileRepositoryFactory::new(repo_file.clone());
 
-        configure_repo_path(repo_file.clone());
-        create_repo(test_password()).expect("repo should be created");
+        factory
+            .create_repo(test_password())
+            .expect("repo should be created");
         assert!(repo_file.exists());
-
-        std::fs::remove_file(&repo_file).expect("remove repo file");
-        clear_configured_repo_path();
     }
 
     #[test]
     fn test_has_repo_true_after_creation() {
-        let _scope = ScopedTuiDataDir::new();
-        create_repo(test_password()).expect("repo should be created");
-        assert!(has_repo());
+        let temp_dir = TempDir::new().expect("temp dir");
+        let factory = FileRepositoryFactory::new(temp_dir.path().join("repo"));
+        factory
+            .create_repo(test_password())
+            .expect("repo should be created");
+        assert!(factory.has_repo());
     }
 
     #[test]
     fn test_open_repo_success() {
-        let _scope = ScopedTuiDataDir::new();
+        let temp_dir = TempDir::new().expect("temp dir");
+        let factory = FileRepositoryFactory::new(temp_dir.path().join("repo"));
         let password = test_password();
-        create_repo(password.clone()).expect("repo should be created");
-        open_repo(password).expect("repo should open");
+        factory
+            .create_repo(password.clone())
+            .expect("repo should be created");
+        factory.open_repo(password).expect("repo should open");
     }
 
     #[test]
     fn test_open_repo_wrong_password_error() {
-        let _scope = ScopedTuiDataDir::new();
-        create_repo(test_password()).expect("repo should be created");
-        let err = open_repo("wrong".to_string()).expect_err("open should fail");
+        let temp_dir = TempDir::new().expect("temp dir");
+        let factory = FileRepositoryFactory::new(temp_dir.path().join("repo"));
+        factory
+            .create_repo(test_password())
+            .expect("repo should be created");
+        let err = factory
+            .open_repo("wrong".to_string())
+            .expect_err("open should fail");
         assert!(err.to_string().contains("Wrong password"));
     }
 
     #[test]
     fn test_open_repo_missing_repo_error() {
-        let _scope = ScopedTuiDataDir::new();
-        let err = open_repo(test_password()).expect_err("open should fail");
+        let temp_dir = TempDir::new().expect("temp dir");
+        let factory = FileRepositoryFactory::new(temp_dir.path().join("repo"));
+        let err = factory
+            .open_repo(test_password())
+            .expect_err("open should fail");
         assert!(err
             .to_string()
             .contains("Repository does not exist. Create one first."));
@@ -425,37 +397,25 @@ mod tests {
         let config_path = temp_dir.path().join("remote.toml");
         fs::write(
             &config_path,
-            r#"base_url = "https://server.example"
-client_identity_pem_path = "certs/client.pem"
-ca_cert_pem_path = "certs/ca.pem"
+            r#"
+base_url = "https://127.0.0.1:8443"
+client_identity_pem_path = "client.pem"
+ca_cert_pem_path = "ca.pem"
 repository_name = "demo"
 "#,
         )
         .expect("write config");
 
-        let config = load_remote_repository_config(&config_path).expect("load config");
+        let config = load_remote_repository_config(&config_path).expect("config should parse");
+
         assert_eq!(
             config,
             RemoteRepositoryConfig {
-                base_url: "https://server.example".to_string(),
-                client_identity_pem_path: temp_dir.path().join("certs/client.pem"),
-                ca_cert_pem_path: temp_dir.path().join("certs/ca.pem"),
+                base_url: "https://127.0.0.1:8443".to_string(),
+                client_identity_pem_path: temp_dir.path().join("client.pem"),
+                ca_cert_pem_path: temp_dir.path().join("ca.pem"),
                 repository_name: "demo".to_string(),
             }
         );
-    }
-
-    #[test]
-    fn test_has_repo_true_for_remote_mode() {
-        configure_repository_source(RepositorySource::Remote(RemoteRepositoryConfig {
-            base_url: "https://server.example".to_string(),
-            client_identity_pem_path: PathBuf::from("/tmp/client.pem"),
-            ca_cert_pem_path: PathBuf::from("/tmp/ca.pem"),
-            repository_name: "demo".to_string(),
-        }));
-
-        assert!(has_repo());
-
-        clear_configured_repo_path();
     }
 }

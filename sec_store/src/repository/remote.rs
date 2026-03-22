@@ -143,14 +143,6 @@ impl RemoteRepositoriesClient {
 }
 
 impl RemoteRecordsRepository {
-    pub async fn close(self) -> Result<()> {
-        let client = RemoteRepositoriesClient {
-            client: self.client,
-            base_url: self.base_url,
-        };
-        client.close_session(&self.session_id).await
-    }
-
     fn url(&self, path: &str) -> String {
         format!("{}{}", self.base_url, path)
     }
@@ -226,6 +218,14 @@ impl RepositoriesSource<RemoteRecordsRepository> for RemoteRepositoriesClient {
 
 #[async_trait]
 impl RecordsRepository for RemoteRecordsRepository {
+    async fn close(&self) -> Result<()> {
+        let client = RemoteRepositoriesClient {
+            client: self.client.clone(),
+            base_url: self.base_url.clone(),
+        };
+        client.close_session(&self.session_id).await
+    }
+
     async fn cancel(&mut self) -> Result<()> {
         simple_post(self.request(reqwest::Method::POST, "/session/cancel")).await
     }

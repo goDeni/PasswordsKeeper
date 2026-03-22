@@ -8,26 +8,35 @@ use ratatui::{
     widgets::{List, ListItem, ListState, Paragraph},
     Frame,
 };
+use sec_store::repository::RecordsRepository;
 
 use crate::dialogues::create_repo::CreateRepoDialogue;
 use crate::dialogues::open_repo::OpenRepoDialogue;
 use crate::dialogues::{Dialogue, DialogueResult};
-use crate::repo::has_repo;
+use crate::repo::RepositoryFactory;
 
 #[derive(Debug)]
-pub struct WelcomeDialogue {
+pub struct WelcomeDialogue<F> {
+    factory: F,
     list_state: ListState,
 }
 
-impl WelcomeDialogue {
-    pub fn new(selected: Option<usize>) -> Self {
+impl<F> WelcomeDialogue<F> {
+    pub fn new(factory: F, selected: Option<usize>) -> Self {
         let mut state = ListState::default();
         state.select(selected);
-        Self { list_state: state }
+        Self {
+            factory,
+            list_state: state,
+        }
     }
 }
 
-impl Dialogue for WelcomeDialogue {
+impl<F, R> Dialogue<F, R> for WelcomeDialogue<F>
+where
+    F: RepositoryFactory<R>,
+    R: RecordsRepository,
+{
     fn draw(&mut self, frame: &mut Frame, area: Rect) {
         let block = Block::bordered()
             .title(" PasswordsKeeper ")
@@ -41,7 +50,7 @@ impl Dialogue for WelcomeDialogue {
             ListItem::new("Open repository"),
             ListItem::new("Quit"),
         ];
-        if !has_repo() {
+        if !self.factory.has_repo() {
             items[1] =
                 ListItem::new("Open repository (none exists)").style(Style::new().dark_gray());
         }
@@ -71,7 +80,7 @@ impl Dialogue for WelcomeDialogue {
         );
     }
 
-    fn handle_key(&mut self, key_event: crossterm::event::KeyEvent) -> DialogueResult {
+    fn handle_key(&mut self, key_event: crossterm::event::KeyEvent) -> DialogueResult<F, R> {
         let n = 3;
         let sel = self.list_state.selected().unwrap_or(0);
         match key_event.code {
@@ -86,14 +95,14 @@ impl Dialogue for WelcomeDialogue {
             }
             KeyCode::Enter => match sel {
                 0 => DialogueResult::ChangeScreenAndStartInput {
-                    dialogue: Box::new(CreateRepoDialogue::new()),
+                    dialogue: Box::new(CreateRepoDialogue::new(self.factory.clone())),
                     prompt: "Choose a password".to_string(),
                     password: true,
                 },
                 1 => {
-                    if has_repo() {
+                    if self.factory.has_repo() {
                         DialogueResult::ChangeScreenAndStartInput {
-                            dialogue: Box::new(OpenRepoDialogue::new()),
+                            dialogue: Box::new(OpenRepoDialogue::new(self.factory.clone())),
                             prompt: "Enter password".to_string(),
                             password: true,
                         }
@@ -108,11 +117,11 @@ impl Dialogue for WelcomeDialogue {
         }
     }
 
-    fn on_input_submit(&mut self, _value: String) -> DialogueResult {
+    fn on_input_submit(&mut self, _value: String) -> DialogueResult<F, R> {
         DialogueResult::NoOp
     }
 
-    fn on_input_cancel(&mut self) -> DialogueResult {
+    fn on_input_cancel(&mut self) -> DialogueResult<F, R> {
         DialogueResult::NoOp
     }
 }
@@ -122,7 +131,7 @@ mod tests {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     use crate::dialogues::{Dialogue, DialogueResult};
-    use crate::repo;
+    use crate::repo::{FileRepositoryFactory, RepositoryFactory};
     use crate::test_helpers::{test_password, ScopedTuiDataDir};
 
     use super::WelcomeDialogue;
@@ -133,8 +142,9 @@ mod tests {
 
     #[test]
     fn test_navigation_wraps_up() {
-        let _scope = ScopedTuiDataDir::new();
-        let mut dialogue = WelcomeDialogue::new(Some(0));
+        let scope = ScopedTuiDataDir::new();
+        let factory = FileRepositoryFactory::new(scope.temp_dir.path().join("repo"));
+        let mut dialogue = WelcomeDialogue::new(factory, Some(0));
         let res = dialogue.handle_key(key(KeyCode::Up));
         assert!(matches!(res, DialogueResult::NoOp));
         assert_eq!(dialogue.list_state.selected(), Some(2));
@@ -142,8 +152,9 @@ mod tests {
 
     #[test]
     fn test_navigation_wraps_down() {
-        let _scope = ScopedTuiDataDir::new();
-        let mut dialogue = WelcomeDialogue::new(Some(2));
+        let scope = ScopedTuiDataDir::new();
+        let factory = FileRepositoryFactory::new(scope.temp_dir.path().join("repo"));
+        let mut dialogue = WelcomeDialogue::new(factory, Some(2));
         let res = dialogue.handle_key(key(KeyCode::Down));
         assert!(matches!(res, DialogueResult::NoOp));
         assert_eq!(dialogue.list_state.selected(), Some(0));
@@ -151,8 +162,9 @@ mod tests {
 
     #[test]
     fn test_enter_create_starts_password_input() {
-        let _scope = ScopedTuiDataDir::new();
-        let mut dialogue = WelcomeDialogue::new(Some(0));
+        let scope = ScopedTuiDataDir::new();
+        let factory = FileRepositoryFactory::new(scope.temp_dir.path().join("repo"));
+        let mut dialogue = WelcomeDialogue::new(factory, Some(0));
 
         let res = dialogue.handle_key(key(KeyCode::Enter));
         match res {
@@ -168,8 +180,9 @@ mod tests {
 
     #[test]
     fn test_enter_open_without_repo_is_noop() {
-        let _scope = ScopedTuiDataDir::new();
-        let mut dialogue = WelcomeDialogue::new(Some(1));
+        let scope = ScopedTuiDataDir::new();
+        let factory = FileRepositoryFactory::new(scope.temp_dir.path().join("repo"));
+        let mut dialogue = WelcomeDialogue::new(factory, Some(1));
 
         let res = dialogue.handle_key(key(KeyCode::Enter));
         assert!(matches!(res, DialogueResult::NoOp));
@@ -177,9 +190,13 @@ mod tests {
 
     #[test]
     fn test_enter_open_with_repo_starts_password_input() {
-        let _scope = ScopedTuiDataDir::new();
-        repo::create_repo(test_password()).expect("repo creation failed");
-        let mut dialogue = WelcomeDialogue::new(Some(1));
+        let scope = ScopedTuiDataDir::new();
+        let repo_path = scope.temp_dir.path().join("repo");
+        let factory = FileRepositoryFactory::new(repo_path);
+        factory
+            .create_repo(test_password())
+            .expect("repo creation failed");
+        let mut dialogue = WelcomeDialogue::new(factory, Some(1));
 
         let res = dialogue.handle_key(key(KeyCode::Enter));
         match res {
@@ -195,8 +212,9 @@ mod tests {
 
     #[test]
     fn test_enter_quit_returns_exit() {
-        let _scope = ScopedTuiDataDir::new();
-        let mut dialogue = WelcomeDialogue::new(Some(2));
+        let scope = ScopedTuiDataDir::new();
+        let factory = FileRepositoryFactory::new(scope.temp_dir.path().join("repo"));
+        let mut dialogue = WelcomeDialogue::new(factory, Some(2));
         let res = dialogue.handle_key(key(KeyCode::Enter));
         assert!(matches!(res, DialogueResult::Exit));
     }

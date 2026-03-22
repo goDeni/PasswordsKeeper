@@ -63,6 +63,9 @@ impl Display for RepositoryOpenError {
 
 #[async_trait]
 pub trait RecordsRepository: Debug + Clone + Sync + Send + 'static {
+    async fn close(&self) -> Result<()> {
+        Ok(())
+    }
     async fn cancel(&mut self) -> Result<()>;
     async fn save(&mut self) -> Result<()>;
     async fn get_records(&self) -> Result<Vec<Record>>;

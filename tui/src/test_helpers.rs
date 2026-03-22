@@ -21,19 +21,11 @@ impl ScopedTuiDataDir {
     pub(crate) fn new() -> Self {
         let repo_lock = acquire_repo_lock();
         let temp_dir = TempDir::new().expect("failed to create test temp dir");
-        crate::repo::clear_configured_repo_path();
-        crate::repo::configure_repo_path(temp_dir.path().join("repo"));
 
         Self {
             _repo_lock: repo_lock,
             temp_dir,
         }
-    }
-}
-
-impl Drop for ScopedTuiDataDir {
-    fn drop(&mut self) {
-        crate::repo::clear_configured_repo_path();
     }
 }
 
